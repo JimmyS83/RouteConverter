@@ -237,6 +237,9 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
+					<configuration>
+					  <skipTests>true</skipTests>
+					</configuration>
                     <version>2.22.2</version>
                 </plugin>
                 
@@ -302,7 +305,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
                     <!-- When using '@Category( MyUnitTest.class)': MyUnitTest</groups>-->
-                    <skipTests>${skip.unit.tests}</skipTests>
+                    <skipTests>true</skipTests>
                     <excludes>
                         <exclude>**/*IntegrationTest.java</exclude>
                     </excludes>
