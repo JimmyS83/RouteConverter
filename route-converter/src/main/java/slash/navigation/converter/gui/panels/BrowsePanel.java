@@ -271,6 +271,10 @@ public class BrowsePanel implements PanelInTab {
             });
             **/
         }, "CategoryTreeInitializer").start();
+        
+        String selected = r.getCategoryPreference();
+        selectTreePath(TreePathStringConversion.fromString(root, selected), true);
+        treeCategories.expandPath(new TreePath(new Object[]{root, localRoot}));
     }
 
     private int getDefaultRowHeight() {
