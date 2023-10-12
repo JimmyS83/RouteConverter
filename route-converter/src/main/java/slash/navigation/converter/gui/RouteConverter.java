@@ -301,6 +301,8 @@ public abstract class RouteConverter extends SingleFrameApplication {
         initializeHelp();
         getContext().getActionManager().logUsage();
         APIKeyRegistry.getInstance().logUsage();
+        // Show Browser as default panel
+        tabbedPane.setSelectedComponent(browsePanel);
     }
 
     private MapView createMapView(String className) {
