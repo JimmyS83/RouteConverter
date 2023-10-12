@@ -226,7 +226,10 @@ public class BrowsePanel implements PanelInTab {
             handleRouteListUpdate();
             openRoute();
         });
+        /** No need to occupy display by column author
         TableCellRenderer headerRenderer = new SimpleHeaderRenderer("description", "creator");
+        **/
+        TableCellRenderer headerRenderer = new SimpleHeaderRenderer("description");
         TableCellRenderer cellRenderer = new RoutesTableCellRenderer();
         TableColumnModel columns = tableRoutes.getColumnModel();
         for (int i = 0; i < columns.getColumnCount(); i++) {

@@ -44,7 +44,10 @@ public class RoutesTableModel extends AbstractTableModel {
     }
 
     public int getColumnCount() {
+    	/** No need to occupy display by column author
         return 2;
+        **/
+    	return 1;
     }
 
     public Object getValueAt(int rowIndex, int columnIndex) {
