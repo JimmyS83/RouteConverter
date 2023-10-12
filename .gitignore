@@ -17,3 +17,4 @@ dependency-reduced-pom.xml
 .idea/
 # Logging:
 *.log
+route-converter-build/buildNumber.properties
