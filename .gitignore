@@ -18,3 +18,4 @@ dependency-reduced-pom.xml
 # Logging:
 *.log
 route-converter-build/buildNumber.properties
+route-converter-build/buildNumber.properties
