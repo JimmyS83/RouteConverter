@@ -3,7 +3,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>slash.navigation</groupId>
     <artifactId>RouteConverter</artifactId>
-    <version>2.34-SNAPSHOT</version>
+    <version>3.1-SNAPSHOT</version>
     <packaging>pom</packaging>
     <name>RouteConverter</name>
     <url>https://www.routeconverter.com</url>
@@ -11,7 +11,8 @@
     <organization>
         <name>RouteConverter Open Source Project</name>
     </organization>
-
+    <description>RouteConverter displays, modifies, enriches and converts GPS data between over 82 formats</description>
+    <inceptionYear>2008</inceptionYear>
     <developers>
         <developer>
             <id>cpesch</id>
@@ -64,20 +65,16 @@
         <itCoverageAgent />
 
         <java.version>17</java.version>
-        <javafx.version>20.0.1</javafx.version>
         <maven.version>[3.5.4,)</maven.version>
 
         <alephformatter.version>0.1.1</alephformatter.version>
-        <brouter.version>1.6.1</brouter.version>
-        <graphhopper.version>0.13.0</graphhopper.version>
         <httpclient.version>4.5.14</httpclient.version>
         <istack.version>3.0.11</istack.version>
-        <jackson.version>2.15.2</jackson.version>
+        <jackson.version>2.16.0</jackson.version>
         <jaxb-api.version>2.3.1</jaxb-api.version>
         <jaxb-impl.version>2.3.1</jaxb-impl.version>
-        <mapsforge.version>0.19.0</mapsforge.version>
-        <poi.version>5.2.3</poi.version>
-        <slf4j.version>2.0.7</slf4j.version>
+        <mapsforge.version>0.20.0</mapsforge.version>
+        <slf4j.version>2.0.9</slf4j.version>
     </properties>
 
     <profiles>
@@ -208,7 +205,7 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-javadoc-plugin</artifactId>
-                    <version>3.2.0</version>
+                    <version>3.6.3</version>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
@@ -278,7 +275,7 @@
                 <plugin>
                     <groupId>com.akathist.maven.plugins.launch4j</groupId>
                     <artifactId>launch4j-maven-plugin</artifactId>
-                    <version>2.0.1</version>
+                    <version>2.4.1</version>
                 </plugin>
                 <plugin>
                     <groupId>com.coderplus.maven.plugins</groupId>
@@ -408,6 +405,8 @@
                 </configuration>
                 <reportSets>
                     <reportSet>
+                        <id>aggregate</id>
+                        <inherited>false</inherited>
                         <reports>
                             <report>aggregate</report>
                         </reports>
@@ -433,6 +432,12 @@
                                 </group>
                             </groups>
                         </configuration>
+                    </reportSet>
+                    <reportSet>
+                        <id>default</id>
+                        <reports>
+                            <report>javadoc</report>
+                        </reports>
                     </reportSet>
                 </reportSets>
             </plugin>
@@ -483,7 +488,7 @@
         <dependency>
             <groupId>com.jcabi</groupId>
             <artifactId>jcabi-matchers</artifactId>
-            <version>1.6.0</version>
+            <version>1.7.0</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -495,7 +500,7 @@
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
-            <version>4.10.0</version>
+            <version>5.8.0</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -511,18 +516,18 @@
             <dependency>
                 <groupId>commons-cli</groupId>
                 <artifactId>commons-cli</artifactId>
-                <version>1.4</version>
+                <version>1.6.0</version>
             </dependency>
             <dependency>
                 <groupId>commons-codec</groupId>
                 <artifactId>commons-codec</artifactId>
-                <version>1.15</version>
+                <version>1.16.0</version>
                 <classifier>stripped</classifier>
             </dependency>
             <dependency>
                 <groupId>commons-io</groupId>
                 <artifactId>commons-io</artifactId>
-                <version>2.8.0</version>
+                <version>2.15.1</version>
                 <classifier>stripped</classifier>
             </dependency>
             <dependency>
@@ -534,18 +539,27 @@
             <dependency>
                 <groupId>commons-logging</groupId>
                 <artifactId>commons-logging</artifactId>
-                <version>1.2</version>
+                <version>1.3.0</version>
                 <classifier>stripped</classifier>
             </dependency>
             <dependency>
-                <groupId>org.openjfx</groupId>
-                <artifactId>javafx-swing</artifactId>
-                <version>${javafx.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.openjfx</groupId>
-                <artifactId>javafx-web</artifactId>
-                <version>${javafx.version}</version>
+                <groupId>de.grundid.opendatalab</groupId>
+                <artifactId>geojson-jackson</artifactId>
+                <version>1.14</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>com.fasterxml.jackson.core</groupId>
+                        <artifactId>jackson-annotations</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>com.fasterxml.jackson.core</groupId>
+                        <artifactId>jackson-core</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>com.fasterxml.jackson.core</groupId>
+                        <artifactId>jackson-databind</artifactId>
+                    </exclusion>
+                </exclusions>
             </dependency>
             <dependency>
                 <groupId>javax.help</groupId>
@@ -556,7 +570,7 @@
             <dependency>
                 <groupId>org.bidib.com.github.markusbernhardt</groupId>
                 <artifactId>proxy-vole</artifactId>
-                <version>1.1.0</version>
+                <version>1.1.2</version>
                 <exclusions>
                     <exclusion>
                         <groupId>org.slf4j</groupId>
@@ -595,7 +609,6 @@
         <module>gpx</module>
         <module>graphhopper</module>
         <module>hgt</module>
-        <module>javafx8-mapview</module>
         <module>kml</module>
         <module>mapsforge-maps</module>
         <module>mapsforge-mapview</module>
@@ -612,24 +625,21 @@
         <module>route-converter-build</module>
         <module>route-converter-license</module>
         <module>route-converter-cmdline</module>
-        <module>route-converter-google</module>
         <module>route-converter-opensource</module>
         <module>route-converter-tools</module>
         <module>routing-service</module>
         <module>tileserver-maps</module>
         <module>time-album-pro</module>
 
-        <module>RouteConverterBundle</module>
         <module>RouteConverterCmdLine</module>
-        <module>RouteConverterLinuxGoogle</module>
         <module>RouteConverterLinuxOpenSource</module>
-        <module>RouteConverterMacGoogle</module>
         <module>RouteConverterMacOpenSource</module>
-        <module>RouteConverterWindowsGoogle</module>
+        <module>RouteConverterWindowsBundle</module>
         <module>RouteConverterWindowsOpenSource</module>
         <module>RouteConverterPortable</module>
         <module>TimeAlbumProLinux</module>
         <module>TimeAlbumProMac</module>
         <module>TimeAlbumProWindows</module>
+        <module>TimeAlbumProWindowsBundle</module>
     </modules>
 </project>

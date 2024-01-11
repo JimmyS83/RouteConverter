@@ -169,8 +169,8 @@ public abstract class RouteConverter extends SingleFrameApplication {
     private static final String ADD_AUDIO_PREFERENCE = "addAudio";
     private static final String UPLOAD_ROUTE_PREFERENCE = "uploadRoute";
 
-    private static final String SHOWED_MISSING_TRANSLATOR_PREFERENCE = "showedMissingTranslator-2.33"; // versioned preference
-    public static final String AUTOMATIC_UPDATE_CHECK_PREFERENCE = "automaticUpdateCheck-2.33";
+    private static final String SHOWED_MISSING_TRANSLATOR_PREFERENCE = "showedMissingTranslator-3.0"; // versioned preference
+    public static final String AUTOMATIC_UPDATE_CHECK_PREFERENCE = "automaticUpdateCheck-3.0"; // versioned preference
 
     private final NavigationFormatRegistry navigationFormatRegistry = new NavigationFormatRegistry();
     private RouteServiceOperator routeServiceOperator;
@@ -220,8 +220,8 @@ public abstract class RouteConverter extends SingleFrameApplication {
 
     protected void checkJavaPrequisites() {
         String currentVersion = System.getProperty("java.version");
-        if (!isCurrentAtLeastMinimumVersion(currentVersion, "17")) {
-            showMessageDialog(null, "Java " + currentVersion + " is too old for JavaFX 20. Please install Java 17 or later.", "RouteConverter", ERROR_MESSAGE);
+        if (!isJava17OrLater()) {
+            showMessageDialog(null, "Java " + currentVersion + " is too old. Please install Java 17 or later.", "RouteConverter", ERROR_MESSAGE);
             System.exit(8);
         }
     }
@@ -317,9 +317,7 @@ public abstract class RouteConverter extends SingleFrameApplication {
 
     private void openFrame() {
         createFrame(getTitle(), "/slash/navigation/converter/gui/" + getProduct() + ".png", contentPane, null, new FrameMenu().createMenuBar());
-        if (isMac())
-            new ApplicationMenu().addApplicationMenuItems();
-
+        new ApplicationMenu().addApplicationMenuItems();
         new Thread(() -> invokeLater(() -> openFrame(contentPane)), "FrameOpener").start();
     }
 
@@ -337,7 +335,6 @@ public abstract class RouteConverter extends SingleFrameApplication {
                 });
             } catch (Exception e) {
                 log.warning("Could not download tile servers: " + e);
-                e.printStackTrace();
             }
         }, "DownloadTileServerList").start();
 
@@ -1063,8 +1060,7 @@ public abstract class RouteConverter extends SingleFrameApplication {
                 try {
                     runnable.run();
                 } catch (Exception e) {
-                    log.severe("Cannot initialize tab " + selected + ": " + getLocalizedMessage(e));
-                    e.printStackTrace();
+                    log.severe("Cannot initialize tab " + selected + ": " + getLocalizedMessage(e) + "," + e);
                 } finally {
                     stopWaitCursor(frame.getRootPane());
                 }
@@ -1164,7 +1160,7 @@ public abstract class RouteConverter extends SingleFrameApplication {
 
     protected void initializeServices() {
         System.setProperty("rest", parseVersionFromManifest().getVersion());
-        RouteFeedback routeFeedback = new RouteFeedback(System.getProperty("feedback", "https://www.routeconverter.com/feedback/"), getApiUrl(), RouteConverter.getInstance().getCredentials());
+        RouteFeedback routeFeedback = new RouteFeedback(getApiUrl(), RouteConverter.getInstance().getCredentials());
         routeServiceOperator = new RouteServiceOperator(getFrame(), routeFeedback);
         updateChecker = new UpdateChecker(routeFeedback);
         DownloadManager downloadManager = new DownloadManager(new File(getApplicationDirectory(), getEditionId() + "-queue.xml"));
@@ -1198,6 +1194,7 @@ public abstract class RouteConverter extends SingleFrameApplication {
         actionManager.register("convert-track-to-route", new ConvertTrackToRouteAction());
         actionManager.register("show-downloads", new ShowDownloadsAction());
         actionManager.register("show-options", new ShowOptionsAction());
+        actionManager.register("login", new LoginAction());
         actionManager.register("complete-flight-plan", new CompleteFlightPlanAction());
         actionManager.register("help-topics", new HelpTopicsAction());
         actionManager.register("check-for-update", new CheckForUpdateAction(updateChecker));

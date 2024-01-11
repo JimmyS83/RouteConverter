@@ -2,11 +2,11 @@
     <modelVersion>4.0.0</modelVersion>
     <artifactId>TimeAlbumProWindows</artifactId>
     <packaging>jar</packaging>
-    <name>The TimeAlbum Pro tool for Windows</name>
+    <name>TimeAlbum Pro for Windows</name>
     <parent>
         <groupId>slash.navigation</groupId>
         <artifactId>route-converter-build</artifactId>
-        <version>2.34-SNAPSHOT</version>
+        <version>3.1-SNAPSHOT</version>
         <relativePath>../route-converter-build/pom.xml</relativePath>
     </parent>
 
@@ -93,7 +93,6 @@
                            <jar>target/TimeAlbumProWindows.jar</jar>
                            <errTitle>TimeAlbumPro</errTitle>
                            <icon>src/main/app-resources/TimeAlbumPro.ico</icon>
-                           <runtimeBits>32/64</runtimeBits>
                            <splash>
                                <file>src/main/app-resources/TimeAlbumProSplashScreen.bmp</file>
                                <timeout>10</timeout>
@@ -102,8 +101,8 @@
                                <mainClass>slash.navigation.converter.gui.TimeAlbumPro</mainClass>
                            </classPath>
                            <jre>
+                               <path>%JAVA_HOME%;%PATH%</path>
                                <minVersion>17</minVersion>
-                               <jdkPreference>preferJre</jdkPreference>
                                <maxHeapSize>1024</maxHeapSize>
                            </jre>
                            <versionInfo>

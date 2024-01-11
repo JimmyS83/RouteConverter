@@ -2,11 +2,11 @@
     <modelVersion>4.0.0</modelVersion>
     <artifactId>RouteConverterWindowsOpenSource</artifactId>
     <packaging>jar</packaging>
-    <name>RouteConverter OpenSource Edition for Windows</name>
+    <name>RouteConverter for Windows</name>
     <parent>
         <groupId>slash.navigation</groupId>
         <artifactId>route-converter-build</artifactId>
-        <version>2.34-SNAPSHOT</version>
+        <version>3.1-SNAPSHOT</version>
         <relativePath>../route-converter-build/pom.xml</relativePath>
     </parent>
 
@@ -98,8 +98,8 @@
                                 <mainClass>slash.navigation.converter.gui.RouteConverterOpenSource</mainClass>
                             </classPath>
                             <jre>
+                                <path>%JAVA_HOME%;%PATH%</path>
                                 <minVersion>17</minVersion>
-                                <jdkPreference>preferJre</jdkPreference>
                                 <maxHeapSize>1024</maxHeapSize>
                             </jre>
                             <versionInfo>
@@ -110,7 +110,7 @@
                                 <productName>RouteConverter</productName>
                                 <productVersion>${parsedVersion.majorVersion}.${parsedVersion.minorVersion}.${maven.build.number}.0</productVersion>
                                 <txtProductVersion>${project.version} ${maven.build.number} ${maven.build.timestamp.clone}</txtProductVersion>
-                                <internalName>RouteConverter for Windows Offline Vector Map Ed.</internalName>
+                                <internalName>RouteConverter for Windows Executable</internalName>
                                 <originalFilename>RouteConverterWindowsOpenSource.exe</originalFilename>
                             </versionInfo>
                         </configuration>

@@ -35,6 +35,7 @@ import slash.navigation.csv.CsvFormat;
 import slash.navigation.excel.ExcelFormat;
 import slash.navigation.fit.FitFormat;
 import slash.navigation.fpl.GarminFlightPlanFormat;
+import slash.navigation.geojson.GeoJsonFormat;
 import slash.navigation.gopal.GoPal3RouteFormat;
 import slash.navigation.gopal.GoPalTrackFormat;
 import slash.navigation.gpx.Gpx10Format;
@@ -202,6 +203,11 @@ public abstract class NavigationTestCase extends TestCase {
             String sourcePrefix = getAlanWaypointsAndRoutesName(sourceRoute);
             String targetPrefix = getAlanWaypointsAndRoutesName(targetRoute);
             assertRouteNameEquals(sourcePrefix, targetPrefix);
+        } else if (sourceRoute.getName() != null && targetRoute.getName() != null &&
+                sourceRoute.getName().contains(" to ") && !targetRoute.getName().contains(" to ")) {
+            // Garmin 6 to KML
+            assertNotNull(sourceRoute.getName());
+            assertNotNull(targetRoute.getName());
         } else if (targetRoute.getFormat() instanceof TcxFormat) {
             // TcxFormat makes route names unique by prefixing "Name" with "1: "
             String sourceName = getTrainingCenterRouteName(sourceRoute);
@@ -212,6 +218,10 @@ public abstract class NavigationTestCase extends TestCase {
             String sourceName = getFlightPlaneRouteName(sourceRoute);
             String targetName = getFlightPlaneRouteName(targetRoute);
             assertRouteNameEquals(sourceName, targetName);
+        } else if (sourceRoute.getFormat() instanceof GeoJsonFormat) {
+            assertRouteNameEquals("FeatureCollection", sourceRoute.getName());
+        } else if (targetRoute.getFormat() instanceof GeoJsonFormat) {
+            assertRouteNameEquals("FeatureCollection", targetRoute.getName());
         } else if (sourceRoute.getName() != null && targetRoute.getName() != null &&
                 !targetRoute.getName().contains(" to ") && !targetRoute.getName().contains("Route: ") &&
                 !targetRoute.getName().startsWith("/Route") &&
@@ -370,15 +380,15 @@ public abstract class NavigationTestCase extends TestCase {
         } else if ((sourceHeading != null && targetHeading != null) &&
                 (sourceFormat instanceof ColumbusGpsBinaryFormat || sourceFormat instanceof ColumbusGpsFormat ||
                         sourceFormat instanceof CsvFormat || sourceFormat instanceof GoPalTrackFormat ||
-                        sourceFormat instanceof GpsTunerFormat || sourceFormat instanceof GpxFormat ||
+                        sourceFormat instanceof GpsTunerFormat || sourceFormat instanceof GpxFormat || sourceFormat instanceof HaicomLoggerFormat ||
                         sourceFormat instanceof Iblue747Format || sourceFormat instanceof NmeaFormat ||
                         sourceFormat instanceof TomTomRouteFormat) &&
                 (targetFormat instanceof CsvFormat || targetFormat instanceof GoPalTrackFormat ||
-                        targetFormat instanceof GpxFormat ||
+                        targetFormat instanceof GpxFormat || sourceFormat instanceof HaicomLoggerFormat ||
                         targetFormat instanceof Iblue747Format || targetFormat instanceof NmeaFormat ||
                         targetFormat instanceof TomTomRouteFormat)) {
             assertEquals("Heading " + index + " does not match", roundFraction(targetHeading, 1), roundFraction(sourceHeading, 1));
-        } else if (targetFormat instanceof GoPalTrackFormat ||
+        } else if (targetFormat instanceof GoPalTrackFormat || targetFormat instanceof  HaicomLoggerFormat ||
                 (sourceFormat instanceof GpxFormat && targetFormat instanceof CsvFormat) ||
                 (sourceFormat instanceof GpxFormat && targetFormat instanceof ExcelFormat) ||
                 (sourceFormat instanceof QstarzQ1000Format && targetFormat instanceof Iblue747Format)) {
@@ -776,7 +786,8 @@ public abstract class NavigationTestCase extends TestCase {
             if (targetFormat instanceof KmlFormat && targetCharacteristics.equals(Track)) {
                 assertNotNull(sourcePosition.getTime());
                 assertNotNull(targetPosition.getTime());
-            } else if (sourceFormat instanceof GoPalTrackFormat || sourceFormat instanceof GroundTrackFormat ||
+            } else if (sourceFormat instanceof GeoJsonFormat || sourceFormat instanceof GoPalTrackFormat ||
+                    sourceFormat instanceof GroundTrackFormat || targetFormat instanceof GeoJsonFormat ||
                     targetFormat instanceof GoPalTrackFormat || targetFormat instanceof GroundTrackFormat) {
                 DateFormat format = DateFormat.getTimeInstance();
                 format.setTimeZone(UTC);

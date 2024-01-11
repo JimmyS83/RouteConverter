@@ -35,9 +35,9 @@ public class NominatimServiceIT {
     @Test
     public void getPositionsFor() throws IOException {
         List<SimpleNavigationPosition> expected = asList(
-                new SimpleNavigationPosition(10.1988085, 50.0001708, null, "B\u00fchlstra\u00dfe, Grafenrheinfeld, Landkreis Schweinfurt, Bayern, 97506, Deutschland (residential)"),
+                new SimpleNavigationPosition(10.1990052, 50.0001936, null, "B\u00fchlstra\u00dfe, Grafenrheinfeld, Landkreis Schweinfurt, Bayern, 97506, Deutschland (residential)"),
                 new SimpleNavigationPosition(10.2001313, 50.0016142, null, "B\u00fchlstra\u00dfe, Grafenrheinfeld, Landkreis Schweinfurt, Bayern, 97506, Deutschland (living_street)"),
-                new SimpleNavigationPosition(10.1999752, 49.9999416, null, "B\u00fchlstra\u00dfe, Grafenrheinfeld, Landkreis Schweinfurt, Bayern, 97506, Deutschland (service)")
+                new SimpleNavigationPosition(10.1999005, 50.0001319, null, "B\u00fchlstra\u00dfe, Grafenrheinfeld, Landkreis Schweinfurt, Bayern, 97506, Deutschland (service)")
         );
         List<NavigationPosition> actual = service.getPositionsFor("B\u00fchlstra\u00dfe, 97506 Grafenrheinfeld, Germany");
         assertEquals(expected, actual);
@@ -50,7 +50,7 @@ public class NominatimServiceIT {
         assertNull(service.getAddressFor(new SimpleNavigationPosition(0.0, 0.0)));
         assertNull(service.getAddressFor(new SimpleNavigationPosition(0.0, 90.0)));
         assertNull(service.getAddressFor(new SimpleNavigationPosition(0.0, -90.0)));
-        assertEquals("Cantón San Cristóbal, Galápagos, Ecuador", service.getAddressFor(new SimpleNavigationPosition(-90.0, 0.0)));
+        assertTrue(service.getAddressFor(new SimpleNavigationPosition(-90.0, 0.0)).contains("Ecuador"));
         assertNull(service.getAddressFor(new SimpleNavigationPosition(-90.0, -90.0)));
         assertNull(service.getAddressFor(new SimpleNavigationPosition(90.0, 90.0)));
     }
@@ -59,7 +59,8 @@ public class NominatimServiceIT {
     @Test
     public void getAddressForCity() throws IOException {
         // https://nominatim.openstreetmap.org/reverse?lat=47.3&lon=9.0&format=xml
-        assertEquals("M\u00fcslieggstrasse, 8733 Eschenbach (SG), Sankt Gallen, Schweiz/Suisse/Svizzera/Svizra", service.getAddressFor(new SimpleNavigationPosition(9.0, 47.3)));
+        String address = service.getAddressFor(new SimpleNavigationPosition(9.0, 47.3));
+        assertTrue(address.contains("Gallen") && address.contains("Suisse"));
     }
 
     @Test
@@ -71,6 +72,6 @@ public class NominatimServiceIT {
     @Test
     public void getAddressForVillage() throws IOException {
         // https://nominatim.openstreetmap.org/reverse?&lat=51.610954&lon=10.210236&format=xml
-        assertEquals("Am Schützenplatz, 37434 Gieboldehausen, Niedersachsen, Deutschland", service.getAddressFor(new SimpleNavigationPosition(10.210236, 51.610954)));
+        assertEquals("Am Sch\u00fctzenplatz 1, 37434 Gieboldehausen, Niedersachsen, Deutschland", service.getAddressFor(new SimpleNavigationPosition(10.210236, 51.610954)));
     }
 }

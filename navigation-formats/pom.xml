@@ -6,7 +6,7 @@
     <parent>
         <groupId>slash.navigation</groupId>
         <artifactId>RouteConverter</artifactId>
-        <version>2.34-SNAPSHOT</version>
+        <version>3.1-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
@@ -25,7 +25,7 @@
     </repositories>
 
     <properties>
-        <eclipselink.version>2.7.4</eclipselink.version>
+        <poi.version>5.2.5</poi.version>
     </properties>
 
     <dependencies>
@@ -79,8 +79,12 @@
         <dependency>
             <groupId>com.garmin</groupId>
             <artifactId>fit</artifactId>
-            <version>21.47.00</version>
+            <version>21.126.00</version>
             <classifier>stripped</classifier>
+        </dependency>
+        <dependency>
+            <groupId>de.grundid.opendatalab</groupId>
+            <artifactId>geojson-jackson</artifactId>
         </dependency>
         <dependency>
             <groupId>org.apache.commons</groupId>
@@ -99,6 +103,14 @@
                     <groupId>commons-codec</groupId>
                     <artifactId>commons-codec</artifactId>
                 </exclusion>
+                <exclusion>
+                    <groupId>commons-io</groupId>
+                    <artifactId>commons-io</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.apache.logging.log4j</groupId>
+                    <artifactId>log4j-api</artifactId>
+                </exclusion>
             </exclusions>
         </dependency>
         <dependency>
@@ -112,16 +124,24 @@
                     <artifactId>curvesapi</artifactId>
                 </exclusion>
                 <exclusion>
+                    <groupId>commons-io</groupId>
+                    <artifactId>commons-io</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.apache.commons</groupId>
+                    <artifactId>commons-math3</artifactId>
+                </exclusion>
+                <exclusion>
                     <groupId>org.apache.poi</groupId>
                     <artifactId>poi</artifactId>
                 </exclusion>
                 <exclusion>
                     <groupId>org.apache.poi</groupId>
-                    <artifactId>poi-ooxml-schemas</artifactId>
+                    <artifactId>poi-ooxml-lite</artifactId>
                 </exclusion>
                 <exclusion>
-                    <groupId>org.apache.commons</groupId>
-                    <artifactId>commons-math3</artifactId>
+                    <groupId>org.apache.xmlbeans</groupId>
+                    <artifactId>xmlbeans</artifactId>
                 </exclusion>
                 <exclusion>
                     <groupId>stax</groupId>
@@ -131,9 +151,8 @@
         </dependency>
         <dependency>
             <groupId>org.apache.poi</groupId>
-            <artifactId>poi-ooxml-schemas</artifactId>
-            <version>4.1.2</version>
-            <classifier>stripped</classifier>
+            <artifactId>poi-ooxml-lite</artifactId>
+            <version>${poi.version}</version>
             <exclusions>
                 <exclusion>
                     <groupId>org.apache.xmlbeans</groupId>

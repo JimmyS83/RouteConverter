@@ -64,8 +64,10 @@ public class GraphHopperIT {
         slash.navigation.datasources.File file = mock(slash.navigation.datasources.File.class);
         when(file.getBoundingBox()).thenReturn(new BoundingBox(10.33637, 53.7465, 9.613465, 53.38581));
         when(file.getUri()).thenReturn(URI);
+        when(file.getDataSource()).thenReturn(dataSource);
         when(dataSource.getFiles()).thenReturn(singletonList(file));
         hopper = new GraphHopper(new DownloadManager(createTempFile("queueFile", ".xml")));
+        GraphHopper.TEST_MODE = true;
         hopper.setDataSources(mock(DataSource.class), mock(DataSource.class), dataSource);
         DownloadFuture future = hopper.downloadRoutingDataFor(URI, asList(new LongitudeAndLatitude(10.33637, 53.7465),
                 new LongitudeAndLatitude(9.613465, 53.38581)));
@@ -91,15 +93,15 @@ public class GraphHopperIT {
         assertEquals(Valid, result.getValidity());
         assertEquals(134, result.getPositions().size(), 10);
         assertEquals(13605.6, result.getDistanceAndTime().getDistance(), 25.0);
-        assertEquals(1092018.0, result.getDistanceAndTime().getTimeInMillis(), 100);
+        assertEquals(1068631, result.getDistanceAndTime().getTimeInMillis(), 100);
     }
 
     @Test
     public void testGetRouteBetweenByBike() {
         RoutingResult result = hopper.getRouteBetween(FROM, TO, getTravelMode("bike"));
         assertEquals(Valid, result.getValidity());
-        assertEquals(93, result.getPositions().size(), 10);
+        assertEquals(90, result.getPositions().size(), 10);
         assertEquals(13658.8, result.getDistanceAndTime().getDistance(), 25.0);
-        assertEquals(2920618.0, result.getDistanceAndTime().getTimeInMillis(), 100.0);
+        assertEquals(2921240, result.getDistanceAndTime().getTimeInMillis(), 100.0);
     }
 }
