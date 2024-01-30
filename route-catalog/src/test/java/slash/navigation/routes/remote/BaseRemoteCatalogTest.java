@@ -37,7 +37,8 @@ public abstract class BaseRemoteCatalogTest {
     protected static final String USERNAME = "test";
     protected static final String ANOTHER_USERNAME = "another";
     protected static final String SUPER_USERNAME = "super";
-    protected static final String PASSWORD = "test";
+    protected static final char[] PASSWORD = "test".toCharArray();
+    protected static final char[] WRONG_PASSWORD = "wrong-password".toCharArray();
     // ae oe ue sz AE OE UE
     protected static final String UMLAUTS = "\u00E4\u00F6\u00FC\u00DF\u00C4\u00D6\u00DC";
     // 00A7 is the section sign / Paragraph
@@ -70,12 +71,14 @@ public abstract class BaseRemoteCatalogTest {
     }
 
     protected File getUrlAsFile(String url) throws IOException {
-        Get get = new Get(url);
+        Get request = new Get(url);
         File tempFile = createTempFile("url-as-file", ".bin");
         tempFile.deleteOnExit();
-        try (InputStream inputStream = get.executeAsStream(); OutputStream outputStream = new FileOutputStream(tempFile)) {
-            copyLarge(inputStream, outputStream);
-        }
-        return tempFile;
+        return request.execute(response -> {
+            try (OutputStream outputStream = new FileOutputStream(tempFile)) {
+                copyLarge(response.getEntity().getContent(), outputStream);
+                return tempFile;
+            }
+        });
     }
 }

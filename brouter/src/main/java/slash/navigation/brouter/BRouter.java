@@ -51,6 +51,7 @@ import static slash.navigation.common.Bearing.calculateBearing;
 import static slash.navigation.download.Checksum.createChecksum;
 import static slash.navigation.routing.RoutingResult.Validity.Invalid;
 import static slash.navigation.routing.RoutingResult.Validity.Valid;
+import static slash.navigation.routing.TravelRestrictions.NO_RESTRICTIONS;
 
 /**
  * Encapsulates access to the BRouter.
@@ -107,22 +108,6 @@ public class BRouter extends BaseRoutingService {
         return true;
     }
 
-    public boolean isSupportTurnpoints() {
-        return false;
-    }
-
-    public boolean isSupportAvoidFerries() {
-        return false;
-    }
-
-    public boolean isSupportAvoidHighways() {
-        return false;
-    }
-
-    public boolean isSupportAvoidTolls() {
-        return false;
-    }
-
     public List<TravelMode> getAvailableTravelModes() {
         List<TravelMode> result = new ArrayList<>();
         if (getProfiles() != null) {
@@ -138,6 +123,10 @@ public class BRouter extends BaseRoutingService {
 
     public TravelMode getPreferredTravelMode() {
         return MOPED;
+    }
+
+    public TravelRestrictions getAvailableTravelRestrictions() {
+        return NO_RESTRICTIONS;
     }
 
     public String getPath() {
@@ -209,7 +198,7 @@ public class BRouter extends BaseRoutingService {
         return result;
     }
 
-    public RoutingResult getRouteBetween(NavigationPosition from, NavigationPosition to, TravelMode travelMode) {
+    public RoutingResult getRouteBetween(NavigationPosition from, NavigationPosition to, TravelMode travelMode, TravelRestrictions travelRestrictions) {
         SecondCounter secondCounter = new SecondCounter() {
             protected void second(int second) {
                 fireRouting(second);
@@ -379,6 +368,46 @@ public class BRouter extends BaseRoutingService {
             downloadManager.waitForCompletion(downloads);
     }
 
+    private Collection<Downloadable> collectDownloadables(Collection<String> uris) {
+        Collection<Downloadable> result = new HashSet<>();
+
+        for (String key : uris) {
+            Downloadable downloadable = getSegments().getDownloadable(key);
+            if (downloadable == null) {
+                log.warning(format("Cannot find downloadable for segment %s", key));
+                continue;
+            }
+            result.add(downloadable);
+        }
+        return result;
+    }
+
+    private boolean existAllSegmentsFromSameDay(Collection<Downloadable> segments) {
+        Checksum latestChecksum = null;
+
+        for (Downloadable downloadable : segments) {
+            File file = createSegmentFile(downloadable.getUri());
+            Checksum fileChecksum = null;
+            try {
+                fileChecksum = createChecksum(file, false);
+            } catch (IOException e) {
+                log.warning(format("Cannot calculate checksum for %s: %s", file, e.getLocalizedMessage()));
+            }
+
+            // file does not exist or failed to calculate checksum
+            if (fileChecksum == null)
+                return false;
+
+            if (latestChecksum == null)
+                latestChecksum = fileChecksum;
+
+            // file is from a different day than existing file
+            else if (!fileChecksum.sameDay(latestChecksum))
+                return false;
+        }
+        return true;
+    }
+
     public DownloadFuture downloadRoutingDataFor(String mapIdentifier, List<LongitudeAndLatitude> longitudeAndLatitudes) {
         if (!isInitialized()) {
             return new DownloadFutureImpl(Collections.emptySet());
@@ -389,42 +418,10 @@ public class BRouter extends BaseRoutingService {
             uris.addAll(createFileKeys(longitudeAndLatitude.longitude, longitudeAndLatitude.latitude));
         }
 
-        Collection<Downloadable> segments = new HashSet<>();
-        Checksum latestChecksum = null;
-
-        for (String key : uris) {
-            Downloadable downloadable = getSegments().getDownloadable(key);
-            if (downloadable != null) {
-                File file = createSegmentFile(downloadable.getUri());
-                if (!file.exists())
-                    segments.add(downloadable);
-
-                if (latestChecksum == null || downloadable.getLatestChecksum() != null &&
-                        downloadable.getLatestChecksum().laterThan(latestChecksum))
-                    latestChecksum = downloadable.getLatestChecksum();
-            }
-        }
-
-        // all segments have to be from the same (latest) date
-        if (latestChecksum != null) {
-            for (String key : uris) {
-                Downloadable downloadable = getSegments().getDownloadable(key);
-                if (downloadable != null) {
-                    File file = createSegmentFile(downloadable.getUri());
-                    if (file.exists()) {
-                        Checksum fileChecksum = null;
-                        try {
-                            fileChecksum = createChecksum(file, false);
-                        } catch (IOException e) {
-                            log.warning(format("Cannot calculate checksum for %s: %s", file, e.getLocalizedMessage()));
-                        }
-
-                        if (fileChecksum != null && latestChecksum.laterThan(fileChecksum))
-                            segments.add(downloadable);
-                    }
-                }
-            }
-        }
+        Collection<Downloadable> segments = collectDownloadables(uris);
+        // if all segments exist locally and are from the same day, we don't need to download them
+        if(existAllSegmentsFromSameDay(segments))
+            segments = new HashSet<>();
         return new DownloadFutureImpl(segments);
     }
 

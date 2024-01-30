@@ -31,7 +31,6 @@ import slash.navigation.itn.TomTomRouteFormat;
 import slash.navigation.kml.Kml22Format;
 import slash.navigation.nmn.NmnFormat;
 import slash.navigation.photo.PhotoFormat;
-import slash.navigation.rest.Get;
 import slash.navigation.tcx.TcxFormat;
 
 import java.io.*;
@@ -218,7 +217,7 @@ public class NavigationFormatParser {
             URL url = new URL(urlString);
             int readBufferSize = getSize(url);
             log.info("Reading '" + url + "' with a buffer of " + readBufferSize + " bytes");
-            NotClosingUnderlyingInputStream buffer = new NotClosingUnderlyingInputStream(new BufferedInputStream(openStream(url), CHUNK_BUFFER_SIZE));
+            NotClosingUnderlyingInputStream buffer = new NotClosingUnderlyingInputStream(new BufferedInputStream(url.openStream(), CHUNK_BUFFER_SIZE));
             // make sure not to read a byte after the limit
             buffer.mark(readBufferSize + CHUNK_BUFFER_SIZE * 2);
             try {
@@ -319,17 +318,7 @@ public class NavigationFormatParser {
 
         int readBufferSize = getSize(url);
         log.info("Reading '" + url + "' with a buffer of " + readBufferSize + " bytes");
-        return read(openStream(url), readBufferSize, extractStartDate(url), extractFile(url), formats);
-    }
-
-   private InputStream openStream(URL url) throws IOException {
-        String urlString = url.toExternalForm();
-        // make sure HTTPS requests use HTTP Client with it's SSL tweaks
-        if (urlString.contains("https://")) {
-            Get get = new Get(urlString);
-            return get.executeAsStream();
-        }
-        return url.openStream();
+        return read(url.openStream(), readBufferSize, extractStartDate(url), extractFile(url), formats);
     }
 
     public ParserResult read(URL url) throws IOException {
