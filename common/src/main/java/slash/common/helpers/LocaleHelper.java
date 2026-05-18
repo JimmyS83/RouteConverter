@@ -37,6 +37,7 @@ public class LocaleHelper {
     public static final Locale DENMARK = new Locale("da", "DK");
     public static final Locale FINLAND = new Locale("fi", "FI");
     public static final Locale HUNGARY = new Locale("hu", "HU");
+    public static final Locale LATVIAN = Locale.forLanguageTag("lv");
     public static final Locale NEDERLANDS = new Locale("nl", "NL");
     public static final Locale NORWAY_BOKMAL = new Locale("nb", "NO");
     public static final Locale POLAND = new Locale("pl", "PL");
@@ -45,6 +46,7 @@ public class LocaleHelper {
     public static final Locale SERBIA = new Locale("sr", "SR");
     public static final Locale SLOVAKIA = new Locale("sk", "SK");
     public static final Locale SPAIN = new Locale("es", "ES");
+    public static final Locale TAMIL = Locale.forLanguageTag("ta");
     public static final Locale TURKEY = new Locale("tr", "TR");
     public static final Locale UKRAINE = new Locale("uk", "UA");
     public static final Locale UZBEKISTAN = new Locale("uz", "UZ");

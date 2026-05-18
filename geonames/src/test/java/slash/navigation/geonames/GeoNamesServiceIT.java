@@ -73,7 +73,7 @@ public class GeoNamesServiceIT {
         assertEquals(190, service.getSRTM3ElevationFor(11.2, 60.0), 5);
         assertNull(service.getSRTM3ElevationFor(11.2, 61.0));
 
-        assertNull(service.getSRTM3ElevationFor(-68.0, -55.0));
+        assertEquals(455, service.getSRTM3ElevationFor(-68.0, -55.0), 5);
         assertNull(service.getSRTM3ElevationFor(-68.0, -56.0));
         assertNull(service.getSRTM3ElevationFor(-68.0, -56.1));
         assertNull(service.getSRTM3ElevationFor(-68.0, -57.0));
@@ -113,7 +113,7 @@ public class GeoNamesServiceIT {
     public void testAddressFor() throws IOException {
         assertEquals("St. Margarethen, Switzerland", service.getAddressFor(new SimpleNavigationPosition(9.0, 47.5)));
         assertEquals("Grafenrheinfeld, Germany", service.getAddressFor(new SimpleNavigationPosition(10.2, 50.001)));
-        assertEquals("Hammersbach, Germany", service.getAddressFor(new SimpleNavigationPosition(11.06561, 47.42428)));
+        assertEquals("Knappenh\u00e4user, Germany", service.getAddressFor(new SimpleNavigationPosition(11.06561, 47.42428)));
         assertEquals("Earth", service.getAddressFor(new SimpleNavigationPosition(0.0, 0.0)));
         assertNotNull(service.getAddressFor(new SimpleNavigationPosition(0.0, -90.0)));
         assertEquals("North Pole", service.getAddressFor(new SimpleNavigationPosition(0.0, 90.0)));
@@ -138,11 +138,12 @@ public class GeoNamesServiceIT {
     public void testNearByPlaceNameFor() throws IOException {
         assertEquals("St. Margarethen, Switzerland", service.getNearByPlaceNameFor(9.0, 47.5));
         assertEquals("Grafenrheinfeld, Germany", service.getNearByPlaceNameFor(10.2, 50.001));
-        assertEquals("Hammersbach, Germany", service.getNearByPlaceNameFor(11.06561, 47.42428));
+        assertEquals("Knappenh\u00e4user, Germany", service.getNearByPlaceNameFor(11.06561, 47.42428));
         assertNull(service.getNearByPlaceNameFor(0.0, 0.0));
-        assertNull(service.getNearByPlaceNameFor(0.0, -90.0));
+        String southPolePlace = "Amundsen-Scott Station, Antarctica";
+        assertEquals(southPolePlace, service.getNearByPlaceNameFor(0.0, -90.0));
+        assertEquals(southPolePlace, service.getNearByPlaceNameFor(-90.0, -90.0));
         assertNull(service.getNearByPlaceNameFor(0.0, 90.0));
         assertNull(service.getNearByPlaceNameFor(90.0, 90.0));
-        assertNull(service.getNearByPlaceNameFor(-90.0, -90.0));
     }
 }

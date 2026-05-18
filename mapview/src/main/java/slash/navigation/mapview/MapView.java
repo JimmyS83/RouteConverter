@@ -23,7 +23,6 @@ package slash.navigation.mapview;
 import slash.navigation.common.BoundingBox;
 import slash.navigation.common.NavigationPosition;
 import slash.navigation.converter.gui.models.*;
-import slash.navigation.gui.models.BooleanModel;
 
 import java.awt.*;
 import java.io.IOException;
@@ -39,7 +38,6 @@ public interface MapView extends PositionsSelectionModel {
     void initialize(PositionsModel positionsModel,
                     MapPreferencesModel preferencesModel,
                     MapViewCallback mapViewCallback);
-    boolean isInitialized();
     boolean isDownload();
     String getMapIdentifier();
     String getMapsPath(); // only MapsforgeMapView
@@ -58,6 +56,8 @@ public interface MapView extends PositionsSelectionModel {
     void showPositionMagnifier(List<NavigationPosition> positions);
 
     NavigationPosition getCenter();
+    void setCenter(NavigationPosition position);
+    BoundingBox getBoundingBox();
 
     void setSelectedPositions(List<NavigationPosition> selectedPositions);
     boolean isSupportsPrinting();

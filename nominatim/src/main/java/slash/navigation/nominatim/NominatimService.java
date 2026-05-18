@@ -22,7 +22,8 @@ package slash.navigation.nominatim;
 
 import slash.navigation.common.NavigationPosition;
 import slash.navigation.common.SimpleNavigationPosition;
-import slash.navigation.geocoding.GeocodingService;
+import slash.navigation.geocoding.BaseGeocodingService;
+import slash.navigation.geocoding.GeocodingResult;
 import slash.navigation.nominatim.reverse.AddresspartsType;
 import slash.navigation.nominatim.reverse.ReversegeocodeType;
 import slash.navigation.nominatim.search.PlaceType;
@@ -44,7 +45,7 @@ import static slash.common.io.Transfer.trim;
  * @author Christian Pesch
  */
 
-public class NominatimService implements GeocodingService {
+public class NominatimService extends BaseGeocodingService {
     private static final Preferences preferences = Preferences.userNodeForPackage(NominatimService.class);
     private static final String NOMINATIM_URL_PREFERENCE = "nominatiumUrl";
 
@@ -61,7 +62,7 @@ public class NominatimService implements GeocodingService {
     }
 
     private String getNominatimUrl() {
-        return preferences.get(NOMINATIM_URL_PREFERENCE, "https://nominatim.openstreetmap.org/");
+        return preferences.get(NOMINATIM_URL_PREFERENCE, "https://nominatim.openstreetmap.org");
     }
 
     private String execute(String uri) throws IOException {
@@ -94,11 +95,11 @@ public class NominatimService implements GeocodingService {
         return result;
     }
 
-    public List<NavigationPosition> getPositionsFor(String address) throws IOException {
-        SearchresultsType result = getSearchFor("search?q=" + encodeUri(address) + "&limit=10&format=xml");
+    public List<GeocodingResult> getPositionsFor(String address) throws IOException {
+        SearchresultsType result = getSearchFor("/search?q=" + encodeUri(address) + "&limit=10&format=xml");
         if (result == null)
             return null;
-        return extractPositions(result.getPlace());
+        return asGeocodingResults(extractPositions(result.getPlace()));
     }
 
     private ReversegeocodeType getReverseFor(String uri) throws IOException {
@@ -114,7 +115,7 @@ public class NominatimService implements GeocodingService {
     }
 
     public String getAddressFor(NavigationPosition position) throws IOException {
-        ReversegeocodeType type = getReverseFor("reverse?lat=" + position.getLatitude() +
+        ReversegeocodeType type = getReverseFor("/reverse?lat=" + position.getLatitude() +
                 "&lon=" + position.getLongitude() + "&zoom=18&addressdetails=1&format=xml");
         if (type == null)
             return null;

@@ -149,14 +149,14 @@ public class DeletePositionsDialog extends SimpleDialog {
             public void valueChanged(ListSelectionEvent e) {
                 if (e.getValueIsAdjusting())
                     return;
-                if (positionsModel.isContinousRange())
+                if (positionsModel.isContinousRangeOperation())
                     return;
                 handlePositionsUpdate();
             }
         });
         positionsModel.addTableModelListener(new TableModelListener() {
             public void tableChanged(TableModelEvent e) {
-                if (positionsModel.isContinousRange())
+                if (positionsModel.isContinousRangeOperation())
                     return;
                 handlePositionsUpdate();
             }
@@ -331,6 +331,9 @@ public class DeletePositionsDialog extends SimpleDialog {
 
     private static Method $$$cachedGetBundleMethod$$$ = null;
 
+    /**
+     * @noinspection ALL
+     */
     private String $$$getMessageFromBundle$$$(String path, String key) {
         ResourceBundle bundle;
         try {

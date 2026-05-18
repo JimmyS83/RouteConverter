@@ -41,18 +41,20 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.function.Predicate;
 import java.util.logging.Logger;
 import java.util.prefs.Preferences;
 
 import static java.lang.String.format;
 import static java.lang.System.currentTimeMillis;
 import static java.util.Arrays.sort;
-import static org.mapsforge.map.rendertheme.InternalRenderTheme.DEFAULT;
-import static org.mapsforge.map.rendertheme.InternalRenderTheme.OSMARENDER;
+import static org.mapsforge.map.rendertheme.internal.MapsforgeThemes.DEFAULT;
+import static org.mapsforge.map.rendertheme.internal.MapsforgeThemes.OSMARENDER;
 import static slash.common.helpers.ThreadHelper.invokeInAwtEventQueue;
 import static slash.common.io.Directories.ensureDirectory;
 import static slash.common.io.Directories.getApplicationDirectory;
 import static slash.common.io.Files.*;
+import static slash.common.io.Transfer.isEmpty;
 import static slash.navigation.datasources.DataSourceManager.*;
 import static slash.navigation.maps.mapsforge.helpers.MapUtil.removePrefix;
 import static slash.navigation.maps.mapsforge.models.OpenStreetMap.OPENSTREETMAP_URL;
@@ -71,6 +73,7 @@ public class MapsforgeMapManager {
     private static final String THEME_DIRECTORY_PREFERENCE = "themeDirectory";
     private static final String DISPLAYED_MAP_PREFERENCE = "displayedMap";
     private static final String APPLIED_THEME_PREFERENCE = "appliedTheme";
+    private static final String APPLIED_STYLE_PREFERENCE = "appliedStyle";
     private static final String DEFAULT_URL = "http://wiki.openstreetmap.org/wiki/Default";
     private static final String OSMARENDER_URL = "http://wiki.openstreetmap.org/wiki/Osmarender";
     private static final OpenStreetMap OPEN_STREET_MAP = new OpenStreetMap();
@@ -81,10 +84,12 @@ public class MapsforgeMapManager {
     private final JoinedItemTableModel<LocalMap> availableMapsModel = new JoinedItemTableModel<>(availableOfflineMapsModel,
             new FilteringTableModel<>(availableOnlineMapsModel, new ActiveTileMapPredicate()));
     private final ItemTableModel<LocalTheme> availableThemesModel = new ItemTableModel<>(1);
+    private final ItemTableModel<ThemeStyle> availableThemeStylesModel = new ItemTableModel<>(1);
+    private final ItemTableModel<ThemeStyleCategory> availableThemeStyleCategoriesModel = new ItemTableModel<>(1);
     private final ItemTableModel<RemoteMap> downloadableMapsModel = new ItemTableModel<>(3);
     private final ItemTableModel<RemoteTheme> downloadableThemesModel = new ItemTableModel<>(3);
 
-    private final ItemModel<LocalMap> displayedMapModel = new ItemModel<LocalMap>(DISPLAYED_MAP_PREFERENCE,  OPENSTREETMAP_URL) {
+    private final ItemModel<LocalMap> displayedMapModel = new ItemModel<>(DISPLAYED_MAP_PREFERENCE, OPENSTREETMAP_URL) {
         protected LocalMap stringToItem(String url) {
             return getAvailableMapsModel().getItemByUrl(url);
         }
@@ -94,13 +99,23 @@ public class MapsforgeMapManager {
         }
     };
 
-    private final ItemModel<LocalTheme> appliedThemeModel = new ItemModel<LocalTheme>(APPLIED_THEME_PREFERENCE, OSMARENDER_URL) {
+    private final ItemModel<LocalTheme> appliedThemeModel = new ItemModel<>(APPLIED_THEME_PREFERENCE, OSMARENDER_URL) {
         protected LocalTheme stringToItem(String url) {
             return getAvailableThemesModel().getItemByUrl(url);
         }
 
         protected String itemToString(LocalTheme theme) {
             return theme.getUrl();
+        }
+    };
+
+    private final ItemModel<ThemeStyle> appliedThemeStyleModel = new ItemModel<>(APPLIED_STYLE_PREFERENCE, null) {
+        protected ThemeStyle stringToItem(String url) {
+            return getAvailableThemeStylesModel().getItemByUrl(url);
+        }
+
+        protected String itemToString(ThemeStyle style) {
+            return style.getUrl();
         }
     };
 
@@ -114,6 +129,41 @@ public class MapsforgeMapManager {
         tileServerToTileMapMediator = new TileServerToTileMapMediator(tileServerMapManager.getAvailableMapsModel(), availableOnlineMapsModel);
         initializeOpenStreetMap();
         initializeBuiltinThemes();
+    }
+
+    public void clearThemeStyles() {
+        getAvailableThemeStylesModel().clear();
+        getAvailableThemeStyleCategoriesModel().clear();
+    }
+
+    public synchronized void setThemeStyles(List<ThemeStyle> themeStyles, String preferredThemeStyleUrl) {
+        clearThemeStyles();
+
+        if (themeStyles == null || themeStyles.isEmpty())
+            return;
+
+        List<ThemeStyle> styles = new ArrayList<>(themeStyles);
+        styles.sort(Comparator.comparing(ThemeStyle::description));
+        for (ThemeStyle themeStyle : styles)
+            getAvailableThemeStylesModel().addOrUpdateItem(themeStyle);
+
+        LocalTheme currentTheme = appliedThemeModel.getItem();
+        String defaultThemeStyleUrl = themeStyles.stream().
+                map(ThemeStyle::getUrl).
+                filter(Predicate.isEqual(preferredThemeStyleUrl)).
+                findFirst().
+                orElse(themeStyles.get(0).getUrl());
+        appliedThemeStyleModel.initializePreferences(currentTheme.description() + APPLIED_STYLE_PREFERENCE, defaultThemeStyleUrl);
+
+        ThemeStyle themeStyle = getAppliedThemeStyleModel().getItem();
+        if (themeStyle != null) {
+            List<ThemeStyleCategory> categories = new ArrayList<>(themeStyle.getCategories());
+            categories.sort(Comparator.comparing(ThemeStyleCategory::description));
+            for (ThemeStyleCategory category : categories) {
+                getAvailableThemeStyleCategoriesModel().addOrUpdateItem(category);
+            }
+        }
+        // could set the applied theme style categories here later
     }
 
     public void dispose() {
@@ -154,8 +204,20 @@ public class MapsforgeMapManager {
         return downloadableThemesModel;
     }
 
+    public ItemTableModel<ThemeStyle> getAvailableThemeStylesModel() {
+        return availableThemeStylesModel;
+    }
+
+    public ItemTableModel<ThemeStyleCategory> getAvailableThemeStyleCategoriesModel() {
+        return availableThemeStyleCategoriesModel;
+    }
+
     public ItemModel<LocalTheme> getAppliedThemeModel() {
         return appliedThemeModel;
+    }
+
+    public ItemModel<ThemeStyle> getAppliedThemeStyleModel() {
+        return appliedThemeStyleModel;
     }
 
     public String getMapsPath() {
@@ -176,7 +238,7 @@ public class MapsforgeMapManager {
 
     private File getDirectory(String preferencesPath, String directoryName) {
         java.io.File f = new java.io.File(preferencesPath);
-        if (f.exists())
+        if (!isEmpty(directoryName) && f.exists())
             return f;
         return ensureDirectory(getApplicationDirectory(directoryName).getAbsolutePath());
     }
@@ -252,7 +314,7 @@ public class MapsforgeMapManager {
                 themeFiles.size(), asDialogString(themeFiles,false), themesDirectory, (end - start)));
     }
 
-    public void scanDatasources() {
+    public void scanDataSources() {
         RemoteFilesAggregator remoteFilesAggregator = new RemoteFilesAggregator(dataSourceManager);
         remoteFilesAggregator.initialize();
 

@@ -50,7 +50,7 @@ import static javax.swing.KeyStroke.getKeyStroke;
 import static slash.navigation.download.DownloadTableModel.*;
 import static slash.navigation.gui.helpers.JMenuHelper.registerAction;
 import static slash.navigation.gui.helpers.JMenuHelper.setMnemonic;
-import static slash.navigation.gui.helpers.JTableHelper.calculateRowHeight;
+import static slash.navigation.gui.helpers.JTableHelper.getDefaultRowHeight;
 import static slash.navigation.gui.helpers.UIHelper.getMaxWidth;
 
 /**
@@ -98,16 +98,8 @@ public class DownloadsDialog extends SimpleDialog {
         }
         TableRowSorter<TableModel> sorter = new TableRowSorter<>(tableDownloads.getModel());
         sorter.setSortsOnUpdates(true);
-        sorter.setComparator(DESCRIPTION_COLUMN, new Comparator<Download>() {
-            public int compare(Download d1, Download d2) {
-                return d1.getDescription().compareToIgnoreCase(d2.getDescription());
-            }
-        });
-        sorter.setComparator(STATE_COLUMN, new Comparator<Download>() {
-            public int compare(Download d1, Download d2) {
-                return d1.getState().compareTo(d2.getState());
-            }
-        });
+        sorter.setComparator(DESCRIPTION_COLUMN, (Comparator<Download>) (d1, d2) -> d1.getDescription().compareToIgnoreCase(d2.getDescription()));
+        sorter.setComparator(STATE_COLUMN, Comparator.comparing(Download::getState));
         sorter.setComparator(SIZE_COLUMN, new Comparator<Download>() {
             private long getSize(Download download) {
                 return download.getSize() != null ? download.getSize() : 0L;
@@ -117,17 +109,15 @@ public class DownloadsDialog extends SimpleDialog {
                 return (int) (getSize(d1) - getSize(d2));
             }
         });
-        sorter.setComparator(DATE_COLUMN, new Comparator<Download>() {
-            public int compare(Download d1, Download d2) {
-                if (d1.getLastModified() == null)
-                    return -1;
-                if (d2.getLastModified() == null)
-                    return 1;
-                return d1.getLastModified().getCalendar().compareTo(d2.getLastModified().getCalendar());
-            }
+        sorter.setComparator(DATE_COLUMN, (Comparator<Download>) (d1, d2) -> {
+            if (d1.getLastModified() == null)
+                return -1;
+            if (d2.getLastModified() == null)
+                return 1;
+            return d1.getLastModified().getCalendar().compareTo(d2.getLastModified().getCalendar());
         });
         tableDownloads.setRowSorter(sorter);
-        tableDownloads.setRowHeight(getDefaultRowHeight());
+        tableDownloads.setRowHeight(getDefaultRowHeight(this));
 
         final ActionManager actionManager = r.getContext().getActionManager();
         actionManager.register("restart-download", new RestartDownloadsAction(this, tableDownloads, r.getDownloadManager()));
@@ -160,11 +150,13 @@ public class DownloadsDialog extends SimpleDialog {
         }, getKeyStroke(VK_ESCAPE, 0), WHEN_ANCESTOR_OF_FOCUSED_COMPONENT);
     }
 
-    private int getDefaultRowHeight() {
-        return calculateRowHeight(this, new DefaultCellEditor(new JTextField()), "Value");
-    }
 
     private void close() {
+        ActionManager actionManager = RouteConverter.getInstance().getContext().getActionManager();
+        actionManager.unregister("restart-download");
+        actionManager.unregister("stop-download");
+        actionManager.unregister("remove-download");
+
         dispose();
     }
 
@@ -224,6 +216,9 @@ public class DownloadsDialog extends SimpleDialog {
 
     private static Method $$$cachedGetBundleMethod$$$ = null;
 
+    /**
+     * @noinspection ALL
+     */
     private String $$$getMessageFromBundle$$$(String path, String key) {
         ResourceBundle bundle;
         try {

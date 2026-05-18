@@ -18,30 +18,19 @@
     Copyright (C) 2007 Christian Pesch. All Rights Reserved.
 */
 
-package slash.navigation.converter.gui.renderer;
+package slash.navigation.converter.gui.actions;
 
-import slash.navigation.common.NavigationPosition;
-
-import javax.swing.*;
-
-import static slash.navigation.converter.gui.helpers.PositionHelper.extractDate;
+import slash.navigation.converter.gui.RouteConverter;
+import slash.navigation.gui.actions.FrameAction;
 
 /**
- * Renders the date column of the positions table.
+ * Logout from the RouteCatalog.
  *
  * @author Christian Pesch
  */
 
-public class DateColumnTableCellEditor extends PositionsTableCellEditor {
-    public DateColumnTableCellEditor() {
-        super(RIGHT);
-    }
-
-    protected void formatCell(JLabel label, NavigationPosition position) {
-        label.setText(extractValue(position));
-    }
-
-    protected String extractValue(NavigationPosition position) {
-        return extractDate(position);
+public class LogoutAction extends FrameAction {
+    public void run() throws Exception {
+        RouteConverter.getInstance().removeLogin();
     }
 }

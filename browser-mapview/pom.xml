@@ -6,7 +6,7 @@
     <parent>
         <groupId>slash.navigation</groupId>
         <artifactId>RouteConverter</artifactId>
-        <version>3.1-SNAPSHOT</version>
+        <version>3.4-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
@@ -30,17 +30,6 @@
             <groupId>slash.navigation</groupId>
             <artifactId>common-gui</artifactId>
             <version>${project.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>commons-lang</groupId>
-            <artifactId>commons-lang</artifactId>
-            <classifier>stripped</classifier>
-        </dependency>
-        <dependency>
-            <groupId>net.andreinc.aleph</groupId>
-            <artifactId>aleph-formatter</artifactId>
-            <version>${alephformatter.version}</version>
         </dependency>
     </dependencies>
 </project>

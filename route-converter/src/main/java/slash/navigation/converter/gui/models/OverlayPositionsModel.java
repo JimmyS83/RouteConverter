@@ -35,7 +35,6 @@ import java.io.File;
 import java.io.IOException;
 import java.util.*;
 
-import static java.lang.Integer.MAX_VALUE;
 import static javax.swing.SwingUtilities.invokeLater;
 import static javax.swing.event.TableModelEvent.ALL_COLUMNS;
 import static slash.common.type.CompactCalendar.fromMillis;
@@ -181,8 +180,8 @@ public class OverlayPositionsModel implements PositionsModel {
         double distance = 0.0;
         while (index <= endIndex) {
             DistanceAndTime distanceAndTime = distanceAndTimeAggregator.getAbsoluteDistancesAndTimes().get(index);
-            if (distanceAndTime != null && distanceAndTime.getDistance() != null)
-                distance = distanceAndTime.getDistance();
+            if (distanceAndTime != null && distanceAndTime.distance() != null)
+                distance = distanceAndTime.distance();
             if (index >= startIndex)
                 result[index - startIndex] = distance;
             index++;
@@ -199,8 +198,8 @@ public class OverlayPositionsModel implements PositionsModel {
 
         for (int i = 0; i < indices.length; i++) {
             DistanceAndTime distanceAndTime = distanceAndTimeAggregator.getAbsoluteDistancesAndTimes().get(indices[i]);
-            if (distanceAndTime != null && distanceAndTime.getDistance() != null)
-                result[i] = distanceAndTime.getDistance();
+            if (distanceAndTime != null && distanceAndTime.distance() != null)
+                result[i] = distanceAndTime.distance();
         }
         return result;
     }
@@ -214,8 +213,8 @@ public class OverlayPositionsModel implements PositionsModel {
         long time = 0;
         while (index <= endIndex) {
             DistanceAndTime distanceAndTime = distanceAndTimeAggregator.getAbsoluteDistancesAndTimes().get(index);
-            if (distanceAndTime != null && distanceAndTime.getTimeInMillis() != null)
-                time = distanceAndTime.getTimeInMillis();
+            if (distanceAndTime != null && distanceAndTime.timeInMillis() != null)
+                time = distanceAndTime.timeInMillis();
             if (index >= startIndex)
                 result[index - startIndex] = time;
             index++;
@@ -232,8 +231,8 @@ public class OverlayPositionsModel implements PositionsModel {
 
         for (int i = 0; i < indices.length; i++) {
             DistanceAndTime distanceAndTime = distanceAndTimeAggregator.getAbsoluteDistancesAndTimes().get(indices[i]);
-            if (distanceAndTime != null && distanceAndTime.getTimeInMillis() != null)
-                result[i] = distanceAndTime.getTimeInMillis();
+            if (distanceAndTime != null && distanceAndTime.timeInMillis() != null)
+                result[i] = distanceAndTime.timeInMillis();
         }
         return result;
     }
@@ -285,6 +284,10 @@ public class OverlayPositionsModel implements PositionsModel {
 
     public void revert() {
         delegate.revert();
+    }
+
+    public void revert(int[] rowIndices) {
+        delegate.revert(rowIndices);
     }
 
     public void top(int[] rowIndices) {
@@ -364,7 +367,7 @@ public class OverlayPositionsModel implements PositionsModel {
         if (getRoute().getCharacteristics().equals(Route)) {
             DistanceAndTime distanceAndTime = distanceAndTimeAggregator.getRelativeDistancesAndTimes().get(rowIndex);
             if(distanceAndTime != null)
-                return distanceAndTime.getDistance();
+                return distanceAndTime.distance();
         }
         return null;
     }
@@ -374,8 +377,12 @@ public class OverlayPositionsModel implements PositionsModel {
         return timesFromStart != null ? fromMillis(timesFromStart[0]) : null;
     }
 
-    public boolean isContinousRange() {
-        return delegate.isContinousRange();
+    public boolean isContinousRangeOperation() {
+        return delegate.isContinousRangeOperation();
+    }
+
+    public boolean isFullTableModification() {
+        return delegate.isFullTableModification();
     }
 
     public void fireTableRowsUpdated(int firstIndex, int lastIndex, int columnIndex) {

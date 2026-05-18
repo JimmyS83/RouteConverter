@@ -78,7 +78,7 @@ import static slash.navigation.converter.gui.helpers.TagStrategy.Create_Tagged_P
 import static slash.navigation.converter.gui.models.LocalActionConstants.PHOTOS;
 import static slash.navigation.converter.gui.models.PositionColumns.*;
 import static slash.navigation.gui.helpers.JMenuHelper.registerAction;
-import static slash.navigation.gui.helpers.JTableHelper.calculateRowHeight;
+import static slash.navigation.gui.helpers.JTableHelper.getDefaultRowHeight;
 import static slash.navigation.photo.TagState.*;
 
 /**
@@ -105,13 +105,13 @@ public class PhotoPanel implements PanelInTab {
 
     private static final ComboBoxModel<FilterPredicate<NavigationPosition>> FILTER_PREDICATE_MODEL =
             new DefaultComboBoxModel<FilterPredicate<NavigationPosition>>(new FilterPredicate[]{
-            new TautologyPredicate("All"),
-            new TagStatePhotoPredicate(Tagged),
-            new TagStatePhotoPredicate(Taggable),
-            new TagStatePhotoPredicate(NotTaggable),
-    });
+                    new TautologyPredicate("All"),
+                    new TagStatePhotoPredicate(Tagged),
+                    new TagStatePhotoPredicate(Taggable),
+                    new TagStatePhotoPredicate(NotTaggable),
+            });
 
-    private final PositionsModel photosModel = new OverlayPositionsModel(new PositionsModelImpl());
+    private PositionsModel photosModel;
     private FilteringPositionsModel<NavigationPosition> filteredPhotosModel;
 
     public PhotoPanel() {
@@ -122,6 +122,7 @@ public class PhotoPanel implements PanelInTab {
     private void initialize() {
         final RouteConverter r = RouteConverter.getInstance();
 
+        photosModel = new OverlayPositionsModel(new PositionsModelImpl(new PositionsModelCallbackImpl(r.getTimeZone())));
         photosModel.setRoute(new Wgs84Route(new PhotoFormat(), Waypoints, null, new ArrayList<Wgs84Position>()));
         filteredPhotosModel = new FilteringPositionsModel<>(photosModel, getFilterPredicatePreference());
         tablePhotos.setModel(filteredPhotosModel);
@@ -144,7 +145,7 @@ public class PhotoPanel implements PanelInTab {
             public void valueChanged(ListSelectionEvent e) {
                 if (e.getValueIsAdjusting())
                     return;
-                if (getFilteredPhotosModel().isContinousRange())
+                if (getFilteredPhotosModel().isContinousRangeOperation())
                     return;
                 handlePositionsUpdate();
             }
@@ -204,7 +205,7 @@ public class PhotoPanel implements PanelInTab {
                 if (e.getStateChange() != SELECTED)
                     return;
                 TimeZoneAndId timeZoneAndId = (TimeZoneAndId) e.getItem();
-                r.getPhotoTimeZone().setTimeZone(timeZoneAndId.getTimeZone());
+                r.getPhotoTimeZone().setTimeZone(timeZoneAndId.timeZone());
             }
         });
 
@@ -235,10 +236,6 @@ public class PhotoPanel implements PanelInTab {
         handlePositionsUpdate();
         for (PositionTableColumn column : tableColumnModel.getPreparedColumns())
             handleColumnVisibilityUpdate(column);
-    }
-
-    private int getDefaultRowHeight() {
-        return calculateRowHeight(this, new DescriptionColumnTableCellEditor(), new SimpleNavigationPosition(null, null));
     }
 
     public Component getRootComponent() {
@@ -298,15 +295,16 @@ public class PhotoPanel implements PanelInTab {
     private void handleColumnVisibilityUpdate(PositionTableColumn column) {
         if (column.getModelIndex() == PHOTO_COLUMN_INDEX || column.getModelIndex() == EXIF_COLUMN_INDEX ||
                 column.getModelIndex() == GPS_COLUMN_INDEX)
-            tablePhotos.setRowHeight(column.isVisible() ? ROW_HEIGHT_FOR_PHOTO_COLUMN : getDefaultRowHeight());
+            tablePhotos.setRowHeight(column.isVisible() ? ROW_HEIGHT_FOR_PHOTO_COLUMN :
+                    getDefaultRowHeight(this, new DescriptionColumnTableCellEditor(), new SimpleNavigationPosition(null, null)));
     }
 
     private FilterPredicate<NavigationPosition> getFilterPredicatePreference() {
         FilterPredicate result = FILTER_PREDICATE_MODEL.getElementAt(0);
-        String name = preferences.get(FILTER_PHOTO_PREDICATE_PREFERENCE, result.getName());
+        String name = preferences.get(FILTER_PHOTO_PREDICATE_PREFERENCE, result.name());
         for (int i = 0, c = FILTER_PREDICATE_MODEL.getSize(); i < c; i++) {
             FilterPredicate filterPredicate = FILTER_PREDICATE_MODEL.getElementAt(i);
-            if (filterPredicate.getName().equals(name)) {
+            if (filterPredicate.name().equals(name)) {
                 result = filterPredicate;
                 break;
             }
@@ -315,7 +313,7 @@ public class PhotoPanel implements PanelInTab {
     }
 
     private void setFilterPredicatePreference(FilterPredicate filterPredicate) {
-        preferences.put(FILTER_PHOTO_PREDICATE_PREFERENCE, filterPredicate.getName());
+        preferences.put(FILTER_PHOTO_PREDICATE_PREFERENCE, filterPredicate.name());
     }
 
     public void addPhotos(List<File> files) {
@@ -382,6 +380,9 @@ public class PhotoPanel implements PanelInTab {
 
     private static Method $$$cachedGetBundleMethod$$$ = null;
 
+    /**
+     * @noinspection ALL
+     */
     private String $$$getMessageFromBundle$$$(String path, String key) {
         ResourceBundle bundle;
         try {

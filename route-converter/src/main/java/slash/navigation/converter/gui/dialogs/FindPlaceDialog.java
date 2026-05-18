@@ -27,15 +27,24 @@ import slash.navigation.base.BaseNavigationPosition;
 import slash.navigation.base.BaseRoute;
 import slash.navigation.common.NavigationPosition;
 import slash.navigation.converter.gui.RouteConverter;
+import slash.navigation.converter.gui.models.FindPlaceResultsModel;
 import slash.navigation.converter.gui.models.PositionsModel;
-import slash.navigation.converter.gui.renderer.NavigationPositionListCellRenderer;
+import slash.navigation.converter.gui.renderer.AlternatingColorTableCellRenderer;
+import slash.navigation.converter.gui.renderer.DescriptionColumnTableCellEditor;
+import slash.navigation.converter.gui.renderer.LatitudeColumnTableCellEditor;
+import slash.navigation.converter.gui.renderer.LongitudeColumnTableCellEditor;
+import slash.navigation.converter.gui.renderer.SimpleHeaderRenderer;
+import slash.navigation.geocoding.GeocodingResult;
 import slash.navigation.gui.SimpleDialog;
 import slash.navigation.gui.actions.DialogAction;
 
 import javax.naming.ServiceUnavailableException;
 import javax.swing.*;
-import javax.swing.event.ListSelectionEvent;
-import javax.swing.event.ListSelectionListener;
+import javax.swing.table.TableCellRenderer;
+import javax.swing.table.TableColumn;
+import javax.swing.table.TableColumnModel;
+import javax.swing.table.TableModel;
+import javax.swing.table.TableRowSorter;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -43,14 +52,21 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.IOException;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.ResourceBundle;
 
 import static java.awt.event.KeyEvent.*;
+import static java.lang.String.CASE_INSENSITIVE_ORDER;
 import static javax.swing.JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT;
 import static javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW;
 import static javax.swing.KeyStroke.getKeyStroke;
+import static slash.navigation.common.BoundingBox.asBoundingBox;
+import static slash.navigation.converter.gui.models.FindPlaceResultsModel.*;
+import static slash.navigation.gui.helpers.JTableHelper.getDefaultRowHeight;
 import static slash.navigation.gui.helpers.JMenuHelper.setMnemonic;
+import static slash.navigation.gui.helpers.UIHelper.getMaxWidth;
 
 /**
  * Dialog for finding and inserting {@link BaseNavigationPosition}s into the current {@link BaseRoute}.
@@ -62,8 +78,9 @@ public class FindPlaceDialog extends SimpleDialog {
     private JPanel contentPane;
     private JTextField textFieldSearch;
     private JButton buttonSearchPositions;
-    private JList<NavigationPosition> listResult;
+    private JTable tableResult;
     private JButton buttonInsertPosition;
+    private final FindPlaceResultsModel tableModel = new FindPlaceResultsModel();
 
     public FindPlaceDialog() {
         super(RouteConverter.getInstance().getFrame(), "find-place");
@@ -106,27 +123,65 @@ public class FindPlaceDialog extends SimpleDialog {
             }
         }, getKeyStroke(VK_ENTER, 0), WHEN_ANCESTOR_OF_FOCUSED_COMPONENT);
 
-        listResult.setCellRenderer(new NavigationPositionListCellRenderer());
-        listResult.setSelectionForeground(new Color(232, 232, 232));
-        listResult.setSelectionBackground(new Color(0, 9 * 16 + 9, 255));
-        listResult.addListSelectionListener(new ListSelectionListener() {
-            public void valueChanged(ListSelectionEvent e) {
+        tableResult.setModel(tableModel);
+        tableResult.setDefaultRenderer(Object.class, new AlternatingColorTableCellRenderer());
+        tableResult.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting())
                 handleSearchUpdate();
-            }
         });
-        listResult.addMouseListener(new MouseAdapter() {
+        TableCellRenderer headerRenderer = new SimpleHeaderRenderer("description", "longitude", "latitude", "service");
+        TableColumnModel columns = tableResult.getColumnModel();
+        for (int i = 0; i < columns.getColumnCount(); i++) {
+            TableColumn column = columns.getColumn(i);
+            column.setHeaderRenderer(headerRenderer);
+            if (i == NAME_COLUMN) {
+                column.setCellRenderer(new DescriptionColumnTableCellEditor());
+            } else if (i == LONGITUDE_COLUMN) {
+                column.setCellRenderer(new LongitudeColumnTableCellEditor());
+                int width = getMaxWidth("-180.1234567", 5);
+                column.setPreferredWidth(width);
+                column.setMaxWidth(width);
+            } else if (i == LATITUDE_COLUMN) {
+                column.setCellRenderer(new LatitudeColumnTableCellEditor());
+                int width = getMaxWidth("-180.1234567", 5);
+                column.setPreferredWidth(width);
+                column.setMaxWidth(width);
+            } else if (i == GEOCODING_SERVICE_COLUMN) {
+                int width = getMaxWidth("Nominatim", 5);
+                column.setPreferredWidth(width);
+                column.setMaxWidth(width);
+            }
+        }
+        TableRowSorter<TableModel> sorter = new TableRowSorter<>(tableModel);
+        sorter.setSortsOnUpdates(true);
+        sorter.setComparator(NAME_COLUMN, Comparator.comparing((NavigationPosition position) -> {
+            String description = position.getDescription();
+            return description != null ? description : "";
+        }, CASE_INSENSITIVE_ORDER));
+        sorter.setComparator(LONGITUDE_COLUMN, Comparator.comparingDouble((NavigationPosition position) -> {
+            Double longitude = position.getLongitude();
+            return longitude != null ? longitude : Double.NEGATIVE_INFINITY;
+        }));
+        sorter.setComparator(LATITUDE_COLUMN, Comparator.comparingDouble((NavigationPosition position) -> {
+            Double latitude = position.getLatitude();
+            return latitude != null ? latitude : Double.NEGATIVE_INFINITY;
+        }));
+        sorter.setComparator(GEOCODING_SERVICE_COLUMN, CASE_INSENSITIVE_ORDER);
+        tableResult.setRowSorter(sorter);
+        tableResult.setRowHeight(getDefaultRowHeight(this));
+        tableResult.addMouseListener(new MouseAdapter() {
             public void mouseClicked(MouseEvent e) {
                 if (e.getClickCount() == 2) {
                     insertPosition();
                 }
             }
         });
-        listResult.registerKeyboardAction(new DialogAction(this) {
+        tableResult.registerKeyboardAction(new DialogAction(this) {
             public void run() {
                 insertPosition();
             }
         }, getKeyStroke(VK_PLUS, 0), WHEN_IN_FOCUSED_WINDOW);
-        listResult.registerKeyboardAction(new DialogAction(this) {
+        tableResult.registerKeyboardAction(new DialogAction(this) {
             public void run() {
                 insertPosition();
             }
@@ -136,32 +191,31 @@ public class FindPlaceDialog extends SimpleDialog {
     }
 
     private void handleSearchUpdate() {
-        boolean existsSelectedResult = listResult.getSelectedIndices().length > 0;
+        RouteConverter r = RouteConverter.getInstance();
+        boolean existsSelectedResult = tableResult.getSelectedRowCount() > 0;
         buttonInsertPosition.setEnabled(existsSelectedResult);
-        if (existsSelectedResult) {
-            List<NavigationPosition> selectedValues = listResult.getSelectedValuesList();
-            RouteConverter.getInstance().showPositionMagnifier(selectedValues);
-        }
+        List<GeocodingResult> selectedValues = getSelectedResults();
+        if (selectedValues.isEmpty())
+            return;
+
+        List<NavigationPosition> positions = selectedValues.stream().map(GeocodingResult::position).toList();
+        r.setCenter(asBoundingBox(positions).getCenter());
     }
 
     private void searchPositions() throws IOException, ServiceUnavailableException {
         RouteConverter r = RouteConverter.getInstance();
-
-        DefaultListModel<NavigationPosition> listModel = new DefaultListModel<>();
-        listResult.setModel(listModel);
         String address = textFieldSearch.getText();
-
-        List<NavigationPosition> positions = r.getGeocodingServiceFacade().getPositionsFor(address);
-        if (positions != null) {
-            for (NavigationPosition position : positions)
-                listModel.addElement(position);
-
-            if (listModel.getSize() > 0) {
-                listResult.setSelectedIndex(0);
-                listResult.scrollRectToVisible(listResult.getCellBounds(0, 0));
-            }
+        List<GeocodingResult> results = r.getGeocodingServiceFacade().getPositionsFor(address);
+        tableModel.setResults(results);
+        if (tableModel.getRowCount() > 0) {
+            tableResult.clearSelection();
+            tableResult.scrollRectToVisible(tableResult.getCellRect(0, 0, true));
+        } else {
+            tableResult.clearSelection();
         }
-
+        List<NavigationPosition> positions = tableModel.getResults().stream().map(GeocodingResult::position).toList();
+        r.showPositionMagnifier(positions.isEmpty() ? null : positions);
+        handleSearchUpdate();
         savePreferences();
     }
 
@@ -172,9 +226,9 @@ public class FindPlaceDialog extends SimpleDialog {
         int[] selectedRows = r.getConvertPanel().getPositionsView().getSelectedRows();
         int row = selectedRows.length > 0 ? selectedRows[0] : positionsModel.getRowCount();
         int insertRow = row > positionsModel.getRowCount() - 1 ? row : row + 1;
-        List<NavigationPosition> selectedValues = listResult.getSelectedValuesList();
+        List<GeocodingResult> selectedValues = getSelectedResults();
         for (int i = selectedValues.size() - 1; i >= 0; i -= 1) {
-            NavigationPosition position = selectedValues.get(i);
+            NavigationPosition position = selectedValues.get(i).position();
             positionsModel.add(insertRow, position.getLongitude(), position.getLatitude(),
                     position.getElevation(), null, null, position.getDescription());
 
@@ -182,6 +236,16 @@ public class FindPlaceDialog extends SimpleDialog {
             r.getConvertPanel().getPositionsSelectionModel().setSelectedPositions(rows, true);
             r.getPositionAugmenter().addData(rows, false, true, true, true, false);
         }
+    }
+
+    private List<GeocodingResult> getSelectedResults() {
+        int[] selectedRows = tableResult.getSelectedRows();
+        List<GeocodingResult> selectedResults = new ArrayList<>(selectedRows.length);
+        for (int selectedRow : selectedRows) {
+            int modelRow = tableResult.convertRowIndexToModel(selectedRow);
+            selectedResults.add(tableModel.getResult(modelRow));
+        }
+        return selectedResults;
     }
 
     public void setVisible(boolean visible) {
@@ -244,13 +308,16 @@ public class FindPlaceDialog extends SimpleDialog {
         panel4.setLayout(new GridLayoutManager(1, 1, new Insets(0, 0, 0, 0), -1, -1));
         panel1.add(panel4, new GridConstraints(1, 0, 1, 1, GridConstraints.ANCHOR_CENTER, GridConstraints.FILL_BOTH, GridConstraints.SIZEPOLICY_CAN_SHRINK | GridConstraints.SIZEPOLICY_CAN_GROW, GridConstraints.SIZEPOLICY_CAN_SHRINK | GridConstraints.SIZEPOLICY_CAN_GROW, null, null, null, 0, false));
         final JScrollPane scrollPane1 = new JScrollPane();
-        panel4.add(scrollPane1, new GridConstraints(0, 0, 1, 1, GridConstraints.ANCHOR_CENTER, GridConstraints.FILL_BOTH, GridConstraints.SIZEPOLICY_CAN_SHRINK | GridConstraints.SIZEPOLICY_WANT_GROW, GridConstraints.SIZEPOLICY_CAN_SHRINK | GridConstraints.SIZEPOLICY_WANT_GROW, null, new Dimension(400, -1), null, 0, false));
-        listResult = new JList();
-        scrollPane1.setViewportView(listResult);
+        panel4.add(scrollPane1, new GridConstraints(0, 0, 1, 1, GridConstraints.ANCHOR_CENTER, GridConstraints.FILL_BOTH, GridConstraints.SIZEPOLICY_CAN_SHRINK | GridConstraints.SIZEPOLICY_WANT_GROW, GridConstraints.SIZEPOLICY_CAN_SHRINK | GridConstraints.SIZEPOLICY_WANT_GROW, null, null, null, 0, false));
+        tableResult = new JTable();
+        scrollPane1.setViewportView(tableResult);
     }
 
     private static Method $$$cachedGetBundleMethod$$$ = null;
 
+    /**
+     * @noinspection ALL
+     */
     private String $$$getMessageFromBundle$$$(String path, String key) {
         ResourceBundle bundle;
         try {

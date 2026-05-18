@@ -92,7 +92,7 @@ import static slash.navigation.converter.gui.helpers.RouteModelHelper.*;
 import static slash.navigation.converter.gui.models.LocalActionConstants.CATEGORIES;
 import static slash.navigation.converter.gui.models.LocalActionConstants.ROUTES;
 import static slash.navigation.gui.helpers.JMenuHelper.registerAction;
-import static slash.navigation.gui.helpers.JTableHelper.calculateRowHeight;
+import static slash.navigation.gui.helpers.JTableHelper.getDefaultRowHeight;
 import static slash.navigation.gui.helpers.JTableHelper.selectAndScrollToPosition;
 import static slash.navigation.gui.helpers.UIHelper.startWaitCursor;
 import static slash.navigation.gui.helpers.UIHelper.stopWaitCursor;
@@ -234,7 +234,7 @@ public class BrowsePanel implements PanelInTab {
             }
             column.setCellRenderer(cellRenderer);
         }
-        tableRoutes.setRowHeight(getDefaultRowHeight());
+        tableRoutes.setRowHeight(getDefaultRowHeight(this));
 
         browsePanel.setTransferHandler(new PanelDropHandler());
 
@@ -270,9 +270,6 @@ public class BrowsePanel implements PanelInTab {
         treeCategories.expandPath(new TreePath(new Object[]{root, localRoot}));
     }
 
-    private int getDefaultRowHeight() {
-        return calculateRowHeight(this, new DefaultCellEditor(new JTextField()), "Value");
-    }
 
     private String createRootFolder() {
         return getRoutesDirectory().getAbsolutePath();
@@ -323,7 +320,7 @@ public class BrowsePanel implements PanelInTab {
         RouteModel route = getRoutesListModel().getRoute(selectedRows[0]);
         URL url;
         try {
-            String urlString = route.getRoute().getUrl();
+            String urlString = route.route().getUrl();
             if (urlString == null)
                 return;
             url = new URL(urlString);
@@ -514,6 +511,9 @@ public class BrowsePanel implements PanelInTab {
 
     private static Method $$$cachedGetBundleMethod$$$ = null;
 
+    /**
+     * @noinspection ALL
+     */
     private String $$$getMessageFromBundle$$$(String path, String key) {
         ResourceBundle bundle;
         try {

@@ -25,7 +25,7 @@ import org.mapsforge.map.layer.Layer;
 import org.mapsforge.map.layer.LayerManager;
 import org.mapsforge.map.layer.Layers;
 import org.mapsforge.map.layer.overlay.Marker;
-import org.mapsforge.map.model.IMapViewPosition;
+import org.mapsforge.map.model.MapViewPosition;
 import org.mapsforge.map.util.MapViewProjection;
 import slash.navigation.mapview.mapsforge.AwtGraphicMapView;
 import slash.navigation.mapview.mapsforge.overlays.DraggableMarker;
@@ -79,8 +79,8 @@ public class MapViewMoverAndZoomer extends MouseAdapter {
         if (isLeftMouseButton(e)) {
             if (isMousePressedOnMarker()) {
                 startDragCursor(mapView);
-                LatLong latLong = projection.fromPixels(e.getX() + markerAndDelta.getDeltaX(), e.getY() + markerAndDelta.getDeltaY());
-                Marker marker = markerAndDelta.getMarker();
+                LatLong latLong = projection.fromPixels(e.getX() + markerAndDelta.deltaX(), e.getY() + markerAndDelta.deltaY());
+                Marker marker = markerAndDelta.marker();
                 marker.setLatLong(latLong);
                 marker.requestRedraw();
 
@@ -96,8 +96,8 @@ public class MapViewMoverAndZoomer extends MouseAdapter {
 
     public void mouseReleased(MouseEvent e) {
         if (isMousePressedOnMarker() && isDragCursor(mapView)) {
-            LatLong latLong = projection.fromPixels(e.getX() + markerAndDelta.getDeltaX(), e.getY() + markerAndDelta.getDeltaY());
-            DraggableMarker marker = markerAndDelta.getMarker();
+            LatLong latLong = projection.fromPixels(e.getX() + markerAndDelta.deltaX(), e.getY() + markerAndDelta.deltaY());
+            DraggableMarker marker = markerAndDelta.marker();
             marker.onDrop(latLong);
             markerAndDelta = null;
             stopWaitCursor(mapView);
@@ -166,12 +166,12 @@ public class MapViewMoverAndZoomer extends MouseAdapter {
     }
 
     private void zoomToPoint(byte zoomLevelDiff, org.mapsforge.core.model.Point point) {
-        IMapViewPosition mapViewPosition = mapView.getModel().mapViewPosition;
+        MapViewPosition mapViewPosition = mapView.getModel().mapViewPosition;
         if (mapViewPosition.getZoomLevel() + zoomLevelDiff <= mapViewPosition.getZoomLevelMax() &&
                 mapViewPosition.getZoomLevel() + zoomLevelDiff >= mapViewPosition.getZoomLevelMin()) {
             Dimension dimension = mapView.getDimension();
-            int horizontalDiff = (int) ((dimension.width / 2 - point.x) * (zoomLevelDiff > 0 ? 0.5 : -1.0));
-            int verticalDiff = (int) ((dimension.height / 2 - point.y) * (zoomLevelDiff > 0 ? 0.5 : -1.0));
+            int horizontalDiff = (int) ((dimension.width / 2.0 - point.x) * (zoomLevelDiff > 0 ? 0.5 : -1.0));
+            int verticalDiff = (int) ((dimension.height / 2.0 - point.y) * (zoomLevelDiff > 0 ? 0.5 : -1.0));
             mapViewPosition.moveCenterAndZoom(horizontalDiff, verticalDiff, zoomLevelDiff);
         }
     }
@@ -184,27 +184,6 @@ public class MapViewMoverAndZoomer extends MouseAdapter {
         return markerAndDelta != null;
     }
 
-    private static class MarkerAndDelta {
-        private final DraggableMarker marker;
-        private final double deltaX;
-        private final double deltaY;
-
-        public MarkerAndDelta(DraggableMarker marker, double deltaX, double deltaY) {
-            this.marker = marker;
-            this.deltaX = deltaX;
-            this.deltaY = deltaY;
-        }
-
-        public DraggableMarker getMarker() {
-            return marker;
-        }
-
-        public double getDeltaX() {
-            return deltaX;
-        }
-
-        public double getDeltaY() {
-            return deltaY;
-        }
+    private record MarkerAndDelta(DraggableMarker marker, double deltaX, double deltaY) {
     }
 }

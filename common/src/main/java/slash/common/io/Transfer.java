@@ -20,17 +20,17 @@
 
 package slash.common.io;
 
+import slash.common.helpers.DateTimeParserFormatter;
+import slash.common.helpers.DateTimeParserFormatterFactory;
 import slash.common.type.CompactCalendar;
 
 import javax.xml.datatype.DatatypeConfigurationException;
 import javax.xml.datatype.DatatypeFactory;
 import javax.xml.datatype.XMLGregorianCalendar;
-import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
-import java.text.DateFormat;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
 import java.util.*;
@@ -42,8 +42,6 @@ import static java.lang.Double.isNaN;
 import static java.lang.Integer.toHexString;
 import static java.lang.Math.*;
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static java.text.DateFormat.MEDIUM;
-import static java.text.DateFormat.SHORT;
 import static java.util.Calendar.*;
 import static java.util.Locale.US;
 import static slash.common.type.CompactCalendar.UTC;
@@ -232,6 +230,12 @@ public class Transfer {
         return aDouble.floatValue();
     }
 
+    public static String formatLongAsString(Long aLong) {
+        if (aLong == null)
+            return "0";
+        return Long.toString(aLong);
+    }
+
     public static String formatShortAsString(Short aShort) {
         if (aShort == null)
             return "0";
@@ -328,19 +332,11 @@ public class Transfer {
     }
 
     public static int[] toArray(List<Integer> integers) {
-        int[] result = new int[integers.size()];
-        for (int i = 0; i < result.length; i++) {
-            result[i] = integers.get(i);
-        }
-        return result;
+        return integers.stream().mapToInt(Integer::intValue).toArray();
     }
 
     public static Integer[] toArray(int[] ints) {
-        Integer[] result = new Integer[ints.length];
-        for (int i = 0; i < result.length; i++) {
-            result[i] = ints[i];
-        }
-        return result;
+        return Arrays.stream(ints).boxed().toArray(Integer[]::new);
     }
 
     public static String encodeUri(String uri) {
@@ -384,41 +380,29 @@ public class Transfer {
         return builder.toString();
     }
 
-    private static final DateFormat dateTimeFormat = DateFormat.getDateTimeInstance(SHORT, MEDIUM);
-    private static String currentDateTimeTimeZone = "";
-    private static final DateFormat dateFormat = DateFormat.getDateInstance(SHORT);
-    private static String currentDateTimeZone = "";
-    private static final DateFormat timeFormat = DateFormat.getTimeInstance(MEDIUM);
-    private static String currentTimeTimeZone = "";
+    private static final DateTimeParserFormatter dateTimeFormat = DateTimeParserFormatterFactory.createDateTimeFormat();
+    private static final DateTimeParserFormatter dateFormat = DateTimeParserFormatterFactory.createDateFormat();
+    private static final DateTimeParserFormatter timeFormat = DateTimeParserFormatterFactory.createTimeFormat();
 
-    public synchronized static DateFormat getDateTimeFormat(String timeZonePreference) {
-        if (!currentDateTimeTimeZone.equals(timeZonePreference)) {
-            dateTimeFormat.setTimeZone(TimeZone.getTimeZone(timeZonePreference));
-            currentDateTimeTimeZone = timeZonePreference;
-        }
+    public synchronized static DateTimeParserFormatter getDateTimeFormat(String timeZonePreference) {
+        dateTimeFormat.setZone(timeZonePreference);
         return dateTimeFormat;
     }
 
-    public synchronized static DateFormat getDateFormat(String timeZonePreference) {
-        if (!currentDateTimeZone.equals(timeZonePreference)) {
-            dateFormat.setTimeZone(TimeZone.getTimeZone(timeZonePreference));
-            currentDateTimeZone = timeZonePreference;
-        }
+    public synchronized static DateTimeParserFormatter getDateFormat(String timeZonePreference) {
+        dateFormat.setZone(timeZonePreference);
         return dateFormat;
     }
 
-    public synchronized static DateFormat getTimeFormat(String timeZonePreference) {
-        if (!currentTimeTimeZone.equals(timeZonePreference)) {
-            timeFormat.setTimeZone(TimeZone.getTimeZone(timeZonePreference));
-            currentTimeTimeZone = timeZonePreference;
-        }
+    public synchronized static DateTimeParserFormatter getTimeFormat(String timeZonePreference) {
+        timeFormat.setZone(timeZonePreference);
         return timeFormat;
     }
 
     public static CompactCalendar parseXMLTime(XMLGregorianCalendar calendar) {
         if (calendar == null)
             return null;
-        GregorianCalendar gregorianCalendar = calendar.toGregorianCalendar(UTC, null, null);
+        GregorianCalendar gregorianCalendar = calendar.toGregorianCalendar();
         return fromMillis(gregorianCalendar.getTimeInMillis());
     }
 
@@ -432,7 +416,7 @@ public class Transfer {
     }
 
     public static XMLGregorianCalendar formatXMLTime(CompactCalendar time) {
-       return formatXMLTime(time, preferences.getBoolean(REDUCE_TIME_TO_SECOND_PRECISION_PREFERENCE, false));
+        return formatXMLTime(time, preferences.getBoolean(REDUCE_TIME_TO_SECOND_PRECISION_PREFERENCE, false));
     }
 
     public static XMLGregorianCalendar formatXMLTime(CompactCalendar time, boolean reduceTimeToSecondPrecision) {
@@ -449,7 +433,6 @@ public class Transfer {
         }
     }
 
-    @SuppressWarnings("MagicConstant")
     private static GregorianCalendar toUTC(Calendar calendar) {
         GregorianCalendar gregorianCalendar = new GregorianCalendar(UTC, Locale.getDefault());
         gregorianCalendar.clear();

@@ -19,15 +19,19 @@
 */
 package slash.navigation.graphhopper;
 
-import slash.common.io.Files;
 import slash.navigation.datasources.DataSource;
 import slash.navigation.datasources.File;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
 import java.util.logging.Logger;
 import java.util.prefs.Preferences;
+import java.util.stream.Stream;
 
 import static java.lang.String.format;
 import static java.lang.System.currentTimeMillis;
@@ -38,6 +42,7 @@ import static java.util.stream.Collectors.toList;
 import static slash.common.io.Directories.ensureDirectory;
 import static slash.common.io.Directories.getApplicationDirectory;
 import static slash.common.io.Files.*;
+import static slash.common.io.Transfer.isEmpty;
 import static slash.navigation.graphhopper.PbfUtil.DOT_PBF;
 import static slash.navigation.graphhopper.PbfUtil.PROPERTIES;
 
@@ -60,11 +65,11 @@ public class GraphManager {
         scanRemoteGraphs(asList(kurviger, mapsforge, graphHopper));
     }
 
-    public List<GraphDescriptor> getLocalGraphDescriptors() {
+    List<GraphDescriptor> getLocalGraphDescriptors() {
         return new ArrayList<>(localGraphDescriptors);
     }
 
-    public List<GraphDescriptor> getRemoteGraphDescriptors() {
+    List<GraphDescriptor> getRemoteGraphDescriptors() {
         return new ArrayList<>(remoteGraphDescriptors);
     }
 
@@ -77,11 +82,10 @@ public class GraphManager {
     }
 
     java.io.File getDirectory(DataSource dataSource) {
-        String directoryName = getPath();
-        java.io.File f = new java.io.File(directoryName);
-        if (!f.exists())
-            directoryName = getApplicationDirectory(dataSource.getDirectory()).getAbsolutePath();
-        return ensureDirectory(directoryName);
+        String path = getPath();
+        if (isEmpty(path) || !new java.io.File(path).exists())
+            path = getApplicationDirectory(dataSource.getDirectory()).getAbsolutePath();
+        return ensureDirectory(path);
     }
 
     List<java.io.File> collectPbfFiles(DataSource dataSource) {
@@ -89,10 +93,12 @@ public class GraphManager {
     }
 
     List<java.io.File> collectGraphDirectories(DataSource dataSource) throws IOException {
-        return java.nio.file.Files.walk(Paths.get(getDirectory(dataSource).getPath()))
-                .filter(f -> isRegularFile(f) && f.getFileName().startsWith(PROPERTIES))
-                .map(f -> f.getParent().toFile())
-                .collect(toList());
+        try (Stream<Path> files = java.nio.file.Files.walk(Paths.get(getDirectory(dataSource).getPath()))) {
+            return files
+                    .filter(f -> isRegularFile(f) && f.getFileName().startsWith(PROPERTIES))
+                    .map(f -> f.getParent().toFile())
+                    .collect(toList());
+        }
     }
 
     private void scanLocalGraphs(DataSource kurviger, DataSource mapsforge, DataSource graphHopper) throws IOException {
@@ -122,20 +128,18 @@ public class GraphManager {
             2. PBFs with graph directories first
             3. then file name by length and alphabet
          */
-        localGraphDescriptors.sort(new Comparator<GraphDescriptor>() {
-          public int compare(GraphDescriptor g1, GraphDescriptor g2) {
-                int order = Integer.compare(g2.getGraphType().order, g1.getGraphType().order);
-                if(order != 0)
-                    return order;
+        localGraphDescriptors.sort((g1, g2) -> {
+              int order = Integer.compare(g2.getGraphType().order, g1.getGraphType().order);
+              if(order != 0)
+                  return order;
 
-                if(g1.hasGraphDirectory() && !g2.hasGraphDirectory())
-                    return -1;
-                if(!g1.hasGraphDirectory() && g2.hasGraphDirectory())
-                    return 1;
+              if(g1.hasGraphDirectory() && !g2.hasGraphDirectory())
+                  return -1;
+              if(!g1.hasGraphDirectory() && g2.hasGraphDirectory())
+                  return 1;
 
-                return Files.compare(g1.getLocalFile(), g2.getLocalFile());
-            }
-        });
+              return compare(g1.getLocalFile(), g2.getLocalFile());
+          });
 
         long end = currentTimeMillis();
         log.info(format("Collected %d local graph files %s in %d milliseconds",
@@ -143,7 +147,7 @@ public class GraphManager {
     }
 
     private void scanRemoteGraphs(List<DataSource> dataSources) {
-        for (DataSource dataSource : dataSources.stream().filter(Objects::nonNull).collect(toList())) {
+        for (DataSource dataSource : dataSources.stream().filter(Objects::nonNull).toList()) {
             for (File file : dataSource.getFiles()) {
                 if (getExtension(file.getUri()).equals(DOT_PBF))
                     remoteGraphDescriptors.add(new GraphDescriptor(GraphType.PBF, null, file));
@@ -173,9 +177,7 @@ public class GraphManager {
             3. when bounding box missing: by uri alphabetically
         */
         public int compare(GraphDescriptor g1, GraphDescriptor g2) {
-            int result = internalCompare(g1, g2);
-            // System.out.println("result: " + result + " g1: " + g1.getRemoteFile() + " g2: " +g2.getRemoteFile());
-            return result;
+            return internalCompare(g1, g2);
         }
 
         private int internalCompare(GraphDescriptor g1, GraphDescriptor g2) {

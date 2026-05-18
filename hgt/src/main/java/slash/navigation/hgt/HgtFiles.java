@@ -41,6 +41,7 @@ import static java.util.stream.Collectors.toList;
 import static slash.common.io.Directories.ensureDirectory;
 import static slash.common.io.Directories.getApplicationDirectory;
 import static slash.common.io.Files.removeExtension;
+import static slash.common.io.Transfer.isEmpty;
 
 /**
  * Encapsulates access to HGT files.
@@ -88,11 +89,10 @@ public class HgtFiles implements ElevationService {
     }
 
     public java.io.File getDirectory() {
-        String directoryName = getPath();
-        java.io.File f = new java.io.File(directoryName);
-        if (!f.exists())
-            directoryName = getApplicationDirectory(dataSource.getDirectory()).getAbsolutePath();
-        return ensureDirectory(directoryName);
+        String path = getPath();
+        if (isEmpty(path) || !new java.io.File(path).exists())
+            path = getApplicationDirectory(dataSource.getDirectory()).getAbsolutePath();
+        return ensureDirectory(path);
     }
 
     String createFileKey(double longitude, double latitude) {
@@ -134,7 +134,7 @@ public class HgtFiles implements ElevationService {
     public void downloadElevationDataFor(List<LongitudeAndLatitude> longitudeAndLatitudes, boolean waitForDownload) {
         Set<String> keys = new HashSet<>();
         for (LongitudeAndLatitude longitudeAndLatitude : longitudeAndLatitudes) {
-            keys.add(createFileKey(longitudeAndLatitude.longitude, longitudeAndLatitude.latitude));
+            keys.add(createFileKey(longitudeAndLatitude.longitude(), longitudeAndLatitude.latitude()));
         }
 
         Collection<Downloadable> downloadables = new HashSet<>();
@@ -174,11 +174,11 @@ public class HgtFiles implements ElevationService {
     private Collection<Fragment<Downloadable>> getDownloadablesFor(BoundingBox boundingBox) {
         Collection<Fragment<Downloadable>> result = new HashSet<>();
 
-        double longitude = boundingBox.getSouthWest().getLongitude();
-        while (longitude < boundingBox.getNorthEast().getLongitude()) {
+        double longitude = boundingBox.southWest().getLongitude();
+        while (longitude < boundingBox.northEast().getLongitude()) {
 
-            double latitude = boundingBox.getSouthWest().getLatitude();
-            while (latitude < boundingBox.getNorthEast().getLatitude()) {
+            double latitude = boundingBox.southWest().getLatitude();
+            while (latitude < boundingBox.northEast().getLatitude()) {
                 String key = createFileKey(longitude, latitude);
                 Fragment<Downloadable> fragment = dataSource.getFragment(key);
                 if (fragment != null)

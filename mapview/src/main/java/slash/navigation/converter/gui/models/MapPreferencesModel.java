@@ -19,7 +19,6 @@
  *     Copyright (C) 2007 Christian Pesch. All Rights Reserved.
  * /
  */
-
 package slash.navigation.converter.gui.models;
 
 import slash.navigation.gui.models.BooleanModel;

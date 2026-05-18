@@ -17,7 +17,6 @@
 
     Copyright (C) 2007 Christian Pesch. All Rights Reserved.
 */
-
 package slash.navigation.converter.gui.actions;
 
 import slash.navigation.base.BaseNavigationPosition;
@@ -35,7 +34,7 @@ import java.util.List;
 
 import static java.util.Arrays.asList;
 import static javax.swing.SwingUtilities.invokeLater;
-import static slash.common.io.Transfer.toArray;
+import static slash.navigation.common.BoundingBox.asBoundingBox;
 import static slash.navigation.gui.events.Range.revert;
 import static slash.navigation.gui.helpers.JTableHelper.scrollToPosition;
 
@@ -66,22 +65,18 @@ public class AddPositionAction extends FrameAction {
         NavigationPosition second = positionsModel.getPosition(row + 1);
         if (!second.hasCoordinates() || !position.hasCoordinates())
             return null;
-        return new BoundingBox(asList(second, position)).getCenter();
+        return asBoundingBox(asList(second, position)).getCenter();
     }
 
     private PositionAugmenter getBatchPositionAugmenter() {
         return RouteConverter.getInstance().getPositionAugmenter();
     }
 
-    private NavigationPosition insertRow(int row, NavigationPosition position) {
+    private NavigationPosition insertPosition(int row, NavigationPosition position) {
         String description = getBatchPositionAugmenter().createDescription(positionsModel.getRowCount() + 1, null);
         positionsModel.add(row, position.getLongitude(), position.getLatitude(), position.getElevation(),
                 position.getSpeed(), position.getTime(), description);
         return positionsModel.getPosition(row);
-    }
-
-    private void complementRow(int row) {
-        getBatchPositionAugmenter().addData(new int[]{row}, true, true, true, true, false);
     }
 
     public void run() {
@@ -105,18 +100,14 @@ public class AddPositionAction extends FrameAction {
                 hasInsertedRowInMapCenter = true;
             }
 
-            insertedPositions.add(insertRow(insertRow, center));
+            insertedPositions.add(insertPosition(insertRow, center));
         }
 
         if (!insertedPositions.isEmpty()) {
-            List<Integer> insertedRows = new ArrayList<>();
-            for (NavigationPosition position : insertedPositions) {
-                int index = positionsModel.getIndex(position);
-                insertedRows.add(index);
-                complementRow(index);
-            }
-
-            final int[] rows = toArray(insertedRows);
+            final int[] rows = insertedPositions.stream()
+                    .mapToInt(positionsModel::getIndex)
+                    .toArray();
+            getBatchPositionAugmenter().addData(rows, true, true, true, true, false);
             final int insertRow = rows.length > 0 ? rows[0] : table.getRowCount();
             invokeLater(() -> {
                 scrollToPosition(table, insertRow);

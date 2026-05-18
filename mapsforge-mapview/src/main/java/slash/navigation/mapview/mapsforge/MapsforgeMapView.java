@@ -32,22 +32,24 @@ import org.mapsforge.map.layer.cache.InMemoryTileCache;
 import org.mapsforge.map.layer.cache.TileCache;
 import org.mapsforge.map.layer.cache.TwoLevelTileCache;
 import org.mapsforge.map.layer.download.TileDownloadLayer;
-import org.mapsforge.map.layer.hills.DemFolderFS;
-import org.mapsforge.map.layer.hills.DiffuseLightShadingAlgorithm;
-import org.mapsforge.map.layer.hills.HillsRenderConfig;
-import org.mapsforge.map.layer.hills.MemoryCachingHgtReaderTileSource;
+import org.mapsforge.map.layer.hills.*;
 import org.mapsforge.map.layer.overlay.Marker;
 import org.mapsforge.map.layer.renderer.TileRendererLayer;
 import org.mapsforge.map.model.DisplayModel;
-import org.mapsforge.map.model.IMapViewPosition;
 import org.mapsforge.map.model.MapViewDimension;
+import org.mapsforge.map.model.MapViewPosition;
 import org.mapsforge.map.model.common.Observer;
 import org.mapsforge.map.reader.MapFile;
+import org.mapsforge.map.rendertheme.XmlRenderTheme;
+import org.mapsforge.map.rendertheme.XmlRenderThemeMenuCallback;
+import org.mapsforge.map.rendertheme.XmlRenderThemeStyleLayer;
+import org.mapsforge.map.rendertheme.XmlRenderThemeStyleMenu;
 import org.mapsforge.map.scalebar.DefaultMapScaleBar;
 import org.mapsforge.map.scalebar.ImperialUnitAdapter;
 import org.mapsforge.map.scalebar.MetricUnitAdapter;
 import org.mapsforge.map.scalebar.NauticalUnitAdapter;
 import org.mapsforge.map.util.MapViewProjection;
+import org.mapsforge.map.view.MapView;
 import slash.common.io.TokenReplacingReader;
 import slash.common.io.TokenResolver;
 import slash.common.io.Transfer;
@@ -63,7 +65,9 @@ import slash.navigation.gui.Application;
 import slash.navigation.gui.actions.ActionManager;
 import slash.navigation.gui.actions.FrameAction;
 import slash.navigation.maps.mapsforge.LocalMap;
+import slash.navigation.maps.mapsforge.LocalTheme;
 import slash.navigation.maps.mapsforge.MapsforgeMapManager;
+import slash.navigation.maps.mapsforge.ThemeStyle;
 import slash.navigation.maps.mapsforge.impl.MBTilesFileMap;
 import slash.navigation.maps.mapsforge.impl.MapsforgeFileMap;
 import slash.navigation.maps.mapsforge.impl.TileDownloadMap;
@@ -72,11 +76,9 @@ import slash.navigation.maps.mapsforge.models.TileServerMapSource;
 import slash.navigation.maps.tileserver.TileServer;
 import slash.navigation.mapview.BaseMapView;
 import slash.navigation.mapview.MapViewCallback;
-import slash.navigation.mapview.mapsforge.helpers.MapViewCoordinateDisplayer;
-import slash.navigation.mapview.mapsforge.helpers.MapViewMoverAndZoomer;
-import slash.navigation.mapview.mapsforge.helpers.MapViewPopupMenu;
-import slash.navigation.mapview.mapsforge.helpers.MapViewResizer;
+import slash.navigation.mapview.mapsforge.helpers.*;
 import slash.navigation.mapview.mapsforge.lines.Polyline;
+import slash.navigation.mapview.mapsforge.models.ThemeStyleImpl;
 import slash.navigation.mapview.mapsforge.overlays.DraggableMarker;
 import slash.navigation.mapview.mapsforge.renderer.RouteRenderer;
 import slash.navigation.mapview.mapsforge.renderer.TrackRenderer;
@@ -87,8 +89,8 @@ import javax.swing.event.*;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.*;
-import java.util.List;
 import java.util.*;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.logging.Logger;
 import java.util.prefs.Preferences;
@@ -118,6 +120,7 @@ import static slash.common.io.Transfer.encodeUri;
 import static slash.common.type.HexadecimalNumber.encodeInt;
 import static slash.navigation.base.RouteCharacteristics.Route;
 import static slash.navigation.base.RouteCharacteristics.Waypoints;
+import static slash.navigation.common.BoundingBox.asBoundingBox;
 import static slash.navigation.common.TransformUtil.delta;
 import static slash.navigation.common.TransformUtil.isPositionInChina;
 import static slash.navigation.converter.gui.models.FixMapMode.Yes;
@@ -166,6 +169,7 @@ public class MapsforgeMapView extends BaseMapView {
     private final RepaintPositionListListener repaintPositionListListener = new RepaintPositionListListener();
     private final DisplayedMapListener displayedMapListener = new DisplayedMapListener();
     private final AppliedThemeListener appliedThemeListener = new AppliedThemeListener();
+    private final AppliedThemeStyleListener appliedThemeStyleListener = new AppliedThemeStyleListener();
     private final AppliedOverlayListener appliedOverlayListener = new AppliedOverlayListener();
     private final ShadedHillsListener shadedHillsListener = new ShadedHillsListener();
 
@@ -179,7 +183,8 @@ public class MapsforgeMapView extends BaseMapView {
     private TrackRenderer trackRenderer;
     private final GroupLayer overlaysLayer = new GroupLayer();
     private TileRendererLayer backgroundLayer;
-    private final HillsRenderConfig hillsRenderConfig = new HillsRenderConfig(null);
+    private final DelegatingShadeTileSource shadeTileSource = new DelegatingShadeTileSource();
+    private final HillsRenderConfig hillsRenderConfig = new HillsRenderConfig(shadeTileSource);
     private SelectionUpdater selectionUpdater;
     private EventMapUpdater routeUpdater, trackUpdater, waypointUpdater;
     private UpdateDecoupler updateDecoupler;
@@ -325,10 +330,13 @@ public class MapsforgeMapView extends BaseMapView {
         ActionManager actionManager = Application.getInstance().getContext().getActionManager();
         actionManager.register("select-position", new SelectPositionAction());
         actionManager.register("extend-selection", new ExtendSelectionAction());
-        actionManager.register("add-position", new AddPositionAction());
-        actionManager.register("delete-position-from-map", new DeletePositionAction());
-        actionManager.registerLocal("delete", MAP, "delete-position-from-map");
+        actionManager.register("new-position-map", new AddPositionAction());
+        actionManager.registerLocal("new-position", MAP, "new-position-map");
+        actionManager.register("delete-position-map", new DeletePositionAction());
+        actionManager.registerLocal("delete", MAP, "delete-position-map");
         actionManager.register("center-here", new CenterAction());
+        actionManager.register("snap-to-road-map", new SnapToRoadAction());
+        actionManager.registerLocal("snap-to-road", MAP, "snap-to-road-map");
         actionManager.register("zoom-in", new ZoomAction(+1));
         actionManager.register("zoom-out", new ZoomAction(-1));
 
@@ -394,7 +402,7 @@ public class MapsforgeMapView extends BaseMapView {
             }
         }, getKeyStroke(VK_DOWN, CTRL_DOWN_MASK), WHEN_IN_FOCUSED_WINDOW);
 
-        final IMapViewPosition mapViewPosition = mapView.getModel().mapViewPosition;
+        final MapViewPosition mapViewPosition = mapView.getModel().mapViewPosition;
         mapViewPosition.setZoomLevelMin(MINIMUM_ZOOM_LEVEL);
         mapViewPosition.setZoomLevelMax(MAXIMUM_ZOOM_LEVEL);
 
@@ -418,11 +426,14 @@ public class MapsforgeMapView extends BaseMapView {
 
         getMapManager().getDisplayedMapModel().addChangeListener(displayedMapListener);
         getMapManager().getAppliedThemeModel().addChangeListener(appliedThemeListener);
+        getMapManager().getAppliedThemeStyleModel().addChangeListener(appliedThemeStyleListener);
         mapViewCallback.getTileServerMapManager().getAppliedOverlaysModel().addTableModelListener(appliedOverlayListener);
     }
 
     public void setBackgroundMap(File backgroundMap) {
         backgroundLayer = createTileRendererLayer(new MapFile(backgroundMap), backgroundMap.getName());
+        LocalTheme theme = getMapManager().getAppliedThemeModel().getItem();
+        backgroundLayer.setXmlRenderTheme(theme.getXmlRenderTheme());
         handleBackground();
     }
 
@@ -442,8 +453,6 @@ public class MapsforgeMapView extends BaseMapView {
         Parameters.MAXIMUM_BUFFER_SIZE = preferences.getInt(READ_BUFFER_SIZE_PREFERENCE, 16000000);
         // No square frame buffer since the device orientation hardly changes
         Parameters.SQUARE_FRAME_BUFFER = false;
-        // Use improved HA3 frame buffer
-        Parameters.FRAME_BUFFER_HA3 = true;
 
         float deviceScaleFactor = getDeviceScaleFactor();
         DisplayModel.setDeviceScaleFactor(deviceScaleFactor);
@@ -495,8 +504,9 @@ public class MapsforgeMapView extends BaseMapView {
     private JPopupMenu createPopupMenu() {
         JPopupMenu menu = new JPopupMenu();
         menu.add(createItem("select-position"));
-        menu.add(createItem("add-position"));    // TODO should be "new-position"
-        menu.add(createItem("delete-position-from-map"));
+        menu.add(createItem("new-position"));
+        menu.add(createItem("delete"));
+        menu.add(createItem("snap-to-road"));
         menu.addSeparator();
         menu.add(createItem("center-here"));
         menu.add(createItem("zoom-in"));
@@ -505,11 +515,52 @@ public class MapsforgeMapView extends BaseMapView {
     }
 
     private TileRendererLayer createTileRendererLayer(MapFile mapFile, String cacheId) {
-        TileRendererLayer tileRendererLayer = new TileRendererLayer(createTileCache(cacheId), mapFile,
+        return new TileRendererLayer(createTileCache(cacheId), mapFile,
                 mapView.getModel().mapViewPosition, true, true, true,
                 GRAPHIC_FACTORY, hillsRenderConfig);
-        tileRendererLayer.setXmlRenderTheme(getMapManager().getAppliedThemeModel().getItem().getXmlRenderTheme());
+    }
+
+    private static final String THEME_STYLE_ALL = "theme-style-all";
+    private final MenuCallback menuCallback = new MenuCallback();
+
+    private TileRendererLayer createMapLayer(MapFile mapFile, String cacheId) {
+        TileRendererLayer tileRendererLayer = createTileRendererLayer(mapFile, cacheId);
+
+        LocalTheme theme = getMapManager().getAppliedThemeModel().getItem();
+        XmlRenderTheme xmlRenderTheme = theme.getXmlRenderTheme();
+        xmlRenderTheme.setMenuCallback(menuCallback);
+        tileRendererLayer.setXmlRenderTheme(theme.getXmlRenderTheme());
         return tileRendererLayer;
+    }
+
+    private class MenuCallback implements XmlRenderThemeMenuCallback {
+        public Set<String> getCategories(XmlRenderThemeStyleMenu renderThemeStyleMenu) {
+            Map<String, XmlRenderThemeStyleLayer> layers = renderThemeStyleMenu.getLayers();
+            String stylePreference = getMapManager().getAppliedThemeStyleModel().getItem() != null ? getMapManager().getAppliedThemeStyleModel().getItem().getUrl() : null;
+            String style = stylePreference == null ? renderThemeStyleMenu.getDefaultValue() : stylePreference;
+            List<ThemeStyle> themeStyles = layers.values().stream().
+                    filter(XmlRenderThemeStyleLayer::isVisible).
+                    map(layer -> (ThemeStyle) new ThemeStyleImpl(renderThemeStyleMenu, layer)).
+                    toList();
+            getMapManager().setThemeStyles(themeStyles, style);
+
+            XmlRenderThemeStyleLayer renderThemeStyleLayer = renderThemeStyleMenu.getLayer(style);
+            if (THEME_STYLE_ALL.equals(stylePreference)) {
+                return null;
+
+            } else if (renderThemeStyleLayer == null) {
+                log.warning("Invalid style \"" + style + "\", showing all styles");
+                return null;
+            }
+
+            Set<String> categories = renderThemeStyleLayer.getCategories();
+            for (XmlRenderThemeStyleLayer overlay : renderThemeStyleLayer.getOverlays()) {
+                if (overlay.isEnabled()) {
+                    categories.addAll(overlay.getCategories());
+                }
+            }
+            return !categories.isEmpty() ? categories : null;
+        }
     }
 
     private TileCache createTileCache(String cacheId) {
@@ -521,7 +572,7 @@ public class MapsforgeMapView extends BaseMapView {
 
     private Layer createLayerForMap(LocalMap map) {
         return switch (map.getType()) {
-            case Mapsforge -> createTileRendererLayer(((MapsforgeFileMap) map).getMapFile(), map.getUrl());
+            case Mapsforge -> createMapLayer(((MapsforgeFileMap) map).getMapFile(), map.getUrl());
             case MBTiles -> new TileMBTilesLayer(createTileCache(map.getUrl()), mapView.getModel().mapViewPosition, true, ((MBTilesFileMap) map).getMBTilesFile(), GRAPHIC_FACTORY);
             case Download -> new TileDownloadLayer(createTileCache(map.getUrl()), mapView.getModel().mapViewPosition, ((TileDownloadMap) map).getTileSource(), GRAPHIC_FACTORY);
         };
@@ -538,7 +589,7 @@ public class MapsforgeMapView extends BaseMapView {
         try {
             layer = createLayerForMap(map);
         } catch (Exception e) {
-            mapViewCallback.showMapException(map != null ? map.getDescription() : "<no map>", e);
+            mapViewCallback.showMapException(map != null ? map.description() : "<no map>", e);
             return;
         }
 
@@ -588,7 +639,7 @@ public class MapsforgeMapView extends BaseMapView {
             TileServer tileServer = mapViewCallback.getTileServerMapManager().getAppliedOverlaysModel().getItem(i);
             TileServerMapSource mapSource = new TileServerMapSource(tileServer);
             mapSource.setAlpha(true);
-            TileDownloadLayer overlay = new TileDownloadLayer(createTileCache(tileServer.getId()), mapView.getModel().mapViewPosition, mapSource, GRAPHIC_FACTORY);
+            TileDownloadLayer overlay = new TileDownloadLayer(createTileCache(tileServer.id()), mapView.getModel().mapViewPosition, mapSource, GRAPHIC_FACTORY);
             overlaysLayer.layers.add(overlay);
             overlay.setDisplayModel(mapView.getModel().displayModel);
             overlay.start();
@@ -625,7 +676,7 @@ public class MapsforgeMapView extends BaseMapView {
     }
 
     private void handleShadedHills() {
-        hillsRenderConfig.setTileSource(null);
+        shadeTileSource.setDelegate(null);
 
         if (preferencesModel.getShowShadedHills().getBoolean()) {
             ElevationService elevationService = mapViewCallback.getElevationService();
@@ -633,9 +684,8 @@ public class MapsforgeMapView extends BaseMapView {
                 File directory = elevationService.getDirectory();
                 if (directory != null && directory.exists()) {
                     MemoryCachingHgtReaderTileSource tileSource = new MemoryCachingHgtReaderTileSource(
-                            new DemFolderFS(directory), new DiffuseLightShadingAlgorithm(), GRAPHIC_FACTORY);
-                    tileSource.setEnableInterpolationOverlap(true);
-                    hillsRenderConfig.setTileSource(tileSource);
+                            new DemFolderFS(directory), new DiffuseLightShadingAlgorithm(), GRAPHIC_FACTORY, true);
+                    shadeTileSource.setDelegate(tileSource);
                     hillsRenderConfig.indexOnThread();
                 }
             }
@@ -650,16 +700,12 @@ public class MapsforgeMapView extends BaseMapView {
         };
     }
 
-    public boolean isInitialized() {
-        return true;
-    }
-
     public boolean isDownload() {
         return true;
     }
 
     public String getMapIdentifier() {
-        return getMapManager().getDisplayedMapModel().getItem().getDescription();
+        return getMapManager().getDisplayedMapModel().getItem().description();
     }
 
     public Throwable getInitializationCause() {
@@ -669,6 +715,7 @@ public class MapsforgeMapView extends BaseMapView {
     public void dispose() {
         getMapManager().getDisplayedMapModel().removeChangeListener(displayedMapListener);
         getMapManager().getAppliedThemeModel().removeChangeListener(appliedThemeListener);
+        getMapManager().getAppliedThemeStyleModel().removeChangeListener(appliedThemeStyleListener);
         mapViewCallback.getTileServerMapManager().getAppliedOverlaysModel().removeTableModelListener(appliedOverlayListener);
 
         positionsModel.removeTableModelListener(positionsModelListener);
@@ -699,6 +746,7 @@ public class MapsforgeMapView extends BaseMapView {
         int zoom = getZoom();
         preferences.putInt(CENTER_ZOOM_PREFERENCE, zoom);
 
+        hillsRenderConfig.interruptAndDestroy();
         mapView.destroyAll();
     }
 
@@ -714,7 +762,7 @@ public class MapsforgeMapView extends BaseMapView {
     public void showAllPositions() {
         List<NavigationPosition> positions = positionsModel.getRoute().getPositions();
         if (!positions.isEmpty()) {
-            BoundingBox both = new BoundingBox(positions);
+            BoundingBox both = asBoundingBox(positions);
             zoomToBounds(both);
             setCenter(both.getCenter(), true);
         }
@@ -813,7 +861,7 @@ public class MapsforgeMapView extends BaseMapView {
     @SuppressWarnings("unchecked")
     private BoundingBox getRouteBoundingBox() {
         BaseRoute route = positionsModel.getRoute();
-        return route != null && !route.getPositions().isEmpty() ? new BoundingBox(route.getPositions()) : null;
+        return route != null && !route.getPositions().isEmpty() ? asBoundingBox(route.getPositions()) : null;
     }
 
     private boolean isGoogleMap(LocalMap map) {
@@ -852,20 +900,20 @@ public class MapsforgeMapView extends BaseMapView {
 
     private List<LatLong> asLatLong(BoundingBox boundingBox) {
         return asLatLong(asList(
-                boundingBox.getNorthEast(),
+                boundingBox.northEast(),
                 boundingBox.getSouthEast(),
-                boundingBox.getSouthWest(),
+                boundingBox.southWest(),
                 boundingBox.getNorthWest(),
-                boundingBox.getNorthEast()
+                boundingBox.northEast()
         ));
     }
 
-    org.mapsforge.core.model.BoundingBox asBoundingBox(BoundingBox boundingBox) {
+    org.mapsforge.core.model.BoundingBox asMapsforgeBoundingBox(BoundingBox boundingBox) {
         return new org.mapsforge.core.model.BoundingBox(
-                boundingBox.getSouthWest().getLatitude(),
-                boundingBox.getSouthWest().getLongitude(),
-                boundingBox.getNorthEast().getLatitude(),
-                boundingBox.getNorthEast().getLongitude()
+                boundingBox.southWest().getLatitude(),
+                boundingBox.southWest().getLongitude(),
+                boundingBox.northEast().getLatitude(),
+                boundingBox.northEast().getLongitude()
         );
     }
 
@@ -879,8 +927,8 @@ public class MapsforgeMapView extends BaseMapView {
 
         // if there is a route and we center and zoom, then use the route bounding box
         if (routeBoundingBox != null) {
-            positions.add(routeBoundingBox.getNorthEast());
-            positions.add(routeBoundingBox.getSouthWest());
+            positions.add(routeBoundingBox.northEast());
+            positions.add(routeBoundingBox.southWest());
         }
 
         // if the map is limited
@@ -888,23 +936,23 @@ public class MapsforgeMapView extends BaseMapView {
 
             // if there is a route
             if (routeBoundingBox != null) {
-                positions.add(routeBoundingBox.getNorthEast());
-                positions.add(routeBoundingBox.getSouthWest());
+                positions.add(routeBoundingBox.northEast());
+                positions.add(routeBoundingBox.southWest());
                 // if the map is limited and doesn't cover the route
                 if (!mapBoundingBox.contains(routeBoundingBox)) {
-                    positions.add(mapBoundingBox.getNorthEast());
-                    positions.add(mapBoundingBox.getSouthWest());
+                    positions.add(mapBoundingBox.northEast());
+                    positions.add(mapBoundingBox.southWest());
                 }
 
                 // if there just a map
             } else {
-                positions.add(mapBoundingBox.getNorthEast());
-                positions.add(mapBoundingBox.getSouthWest());
+                positions.add(mapBoundingBox.northEast());
+                positions.add(mapBoundingBox.southWest());
             }
         }
 
         if (!positions.isEmpty()) {
-            BoundingBox both = new BoundingBox(positions);
+            BoundingBox both = asBoundingBox(positions);
             if (alwaysZoom)
                 zoomToBounds(both);
             setCenter(both.getCenter(), alwaysRecenter);
@@ -913,7 +961,7 @@ public class MapsforgeMapView extends BaseMapView {
 
     private void limitZoomLevel() {
         LocalMap map = mapsToLayers.keySet().iterator().next();
-        IMapViewPosition mapViewPosition = mapView.getModel().mapViewPosition;
+        MapViewPosition mapViewPosition = mapView.getModel().mapViewPosition;
 
         // first set maximum as the implementation checks that minimum > maximum
         Integer max = map.getZoomLevelMax();
@@ -931,7 +979,7 @@ public class MapsforgeMapView extends BaseMapView {
         MapViewDimension mapViewDimension = mapView.getModel().mapViewDimension;
         if (map.getType().equals(Mapsforge) && mapViewDimension.getDimension() != null)
             zoomLevelMin = (byte) max(0, zoomForBounds(mapViewDimension.getDimension(),
-                    asBoundingBox(map.getBoundingBox()), getTileSize()) - 3);
+                    asMapsforgeBoundingBox(map.getBoundingBox()), getTileSize()) - 3);
         mapViewPosition.setZoomLevelMin(zoomLevelMin);
 
         // don't zoom below minimum
@@ -951,13 +999,26 @@ public class MapsforgeMapView extends BaseMapView {
         return asNavigationPosition(mapView.getModel().mapViewPosition.getCenter());
     }
 
+    public void setCenter(NavigationPosition position) {
+        if (position != null)
+            setCenter(position, true);
+    }
+
+    private void setCenter(NavigationPosition center, boolean alwaysRecenter) {
+        setCenter(asLatLong(center), alwaysRecenter);
+    }
+
     private void setCenter(LatLong center, boolean alwaysRecenter) {
         if (alwaysRecenter || mapViewCallback.isRecenterAfterZooming() || !isVisible(center))
             mapView.getModel().mapViewPosition.animateTo(center);
     }
 
-    private void setCenter(NavigationPosition center, boolean alwaysRecenter) {
-        setCenter(asLatLong(center), alwaysRecenter);
+    public BoundingBox getBoundingBox() {
+        if (mapView == null || mapView.getWidth() <= 0 || mapView.getHeight() <= 0)
+            return null;
+
+        org.mapsforge.core.model.BoundingBox boundingBox = mapView.getBoundingBox();
+        return boundingBox != null ? toBoundingBox(boundingBox) : null;
     }
 
     private int getZoom() {
@@ -977,7 +1038,11 @@ public class MapsforgeMapView extends BaseMapView {
     }
 
     private void zoomToBounds(BoundingBox boundingBox) {
-        zoomToBounds(asBoundingBox(boundingBox));
+        zoomToBounds(asMapsforgeBoundingBox(boundingBox));
+    }
+
+    public /*for DraggableMarker*/ MapView getMapView() {
+        return mapView;
     }
 
     public boolean isSupportsPrinting() {
@@ -1040,10 +1105,19 @@ public class MapsforgeMapView extends BaseMapView {
                     continue;
 
                 positionsModel.edit(index, new PositionColumnValues(asList(LONGITUDE_COLUMN_INDEX, LATITUDE_COLUMN_INDEX),
-                        Arrays.asList(position.getLongitude() + diffLongitude, position.getLatitude() + diffLatitude)), false, true);
+                        asList(position.getLongitude() + diffLongitude, position.getLatitude() + diffLatitude)), false, true);
             } else {
+
+                if(preferencesModel.getCharacteristicsModel().getSelectedCharacteristics().equals(Route)) {
+                    NavigationPosition roadPosition = mapViewCallback.getRoutingService().getSnapToRoadPosition(new SimpleNavigationPosition(longitude, latitude));
+                    if (roadPosition != null) {
+                        longitude = roadPosition.getLongitude();
+                        latitude = roadPosition.getLatitude();
+                    }
+                }
+
                 positionsModel.edit(index, new PositionColumnValues(asList(LONGITUDE_COLUMN_INDEX, LATITUDE_COLUMN_INDEX),
-                        Arrays.asList(longitude, latitude)), false, true);
+                        asList(longitude, latitude)), false, true);
             }
 
             if (cleanTime)
@@ -1126,13 +1200,20 @@ public class MapsforgeMapView extends BaseMapView {
         private void insertPosition(int row, Double longitude, Double latitude) {
             positionsModel.add(row, longitude, latitude, null, null, null, mapViewCallback.createDescription(positionsModel.getRowCount() + 1, null));
             int[] rows = new int[]{row};
-            mapViewCallback.setSelectedPositions(rows, true);
             mapViewCallback.complementData(rows, true, true, true, true, false);
+            mapViewCallback.setSelectedPositions(rows, true);
         }
 
         public void run() {
             LatLong latLong = getMousePosition();
             if (latLong != null) {
+                if(preferencesModel.getCharacteristicsModel().getSelectedCharacteristics().equals(Route)) {
+                    NavigationPosition roadPosition = mapViewCallback.getRoutingService().getSnapToRoadPosition(asNavigationPosition(latLong));
+                    if (roadPosition != null) {
+                        latLong = asLatLong(roadPosition);
+                    }
+                }
+
                 int row = getAddRow();
                 log.info("Adding position at " + latLong + " to row " + row);
                 insertPosition(row, latLong.longitude, latLong.latitude);
@@ -1164,6 +1245,25 @@ public class MapsforgeMapView extends BaseMapView {
         }
     }
 
+    private class SnapToRoadAction extends FrameAction {
+        private void updatePosition(NavigationPosition position, NavigationPosition roadPosition) {
+            positionsModel.edit(positionsModel.getIndex(position),
+                    new PositionColumnValues(asList(LONGITUDE_COLUMN_INDEX, LATITUDE_COLUMN_INDEX),
+                            asList(roadPosition.getLongitude(), roadPosition.getLatitude())), true, true);
+        }
+
+        public void run() {
+            List<NavigationPosition> selectedPositions = toPositions(selectionUpdater.getPositionWithLayers());
+            for(NavigationPosition position : selectedPositions) {
+                NavigationPosition roadPosition = mapViewCallback.getRoutingService().getSnapToRoadPosition(position);
+                if(roadPosition != null) {
+                    updatePosition(position, roadPosition);
+                }
+            }
+            setSelectedPositions(selectedPositions);
+        }
+    }
+
     private class ZoomAction extends FrameAction {
         private final byte zoomLevelDiff;
 
@@ -1174,7 +1274,7 @@ public class MapsforgeMapView extends BaseMapView {
         public void run() {
             if (mapViewCallback.isRecenterAfterZooming()) {
                 List<NavigationPosition> selectedPositions = toPositions(selectionUpdater.getPositionWithLayers());
-                NavigationPosition center = !selectedPositions.isEmpty() ? new BoundingBox(selectedPositions).getCenter() : getCenter();
+                NavigationPosition center = !selectedPositions.isEmpty() ? asBoundingBox(selectedPositions).getCenter() : getCenter();
                 mapViewMoverAndZoomer.zoomToPosition(zoomLevelDiff, asLatLong(center));
             } else
                 mapViewMoverAndZoomer.zoomToMousePosition(zoomLevelDiff);
@@ -1240,8 +1340,6 @@ public class MapsforgeMapView extends BaseMapView {
                         .collect(Collectors.toList());
                 addLayers(icons);
                 markers.addAll(icons);
-
-                setCenter(new BoundingBox(positions).getCenter(), true);
             }
         }
     }
@@ -1283,7 +1381,7 @@ public class MapsforgeMapView extends BaseMapView {
             switch (e.getType()) {
                 case INSERT, DELETE -> updateDecoupler.handleUpdate(e.getType(), e.getFirstRow(), e.getLastRow());
                 case UPDATE -> {
-                    if (positionsModel.isContinousRange())
+                    if (positionsModel.isContinousRangeOperation())
                         return;
                     if (!(e.getColumn() == DESCRIPTION_COLUMN_INDEX ||
                             e.getColumn() == LONGITUDE_COLUMN_INDEX ||
@@ -1358,6 +1456,12 @@ public class MapsforgeMapView extends BaseMapView {
     }
 
     private class AppliedThemeListener implements ChangeListener {
+        public void stateChanged(ChangeEvent e) {
+            handleMapAndThemeUpdate(false, false);
+        }
+    }
+
+    private class AppliedThemeStyleListener implements ChangeListener {
         public void stateChanged(ChangeEvent e) {
             handleMapAndThemeUpdate(false, false);
         }

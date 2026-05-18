@@ -17,31 +17,33 @@
 
     Copyright (C) 2007 Christian Pesch. All Rights Reserved.
 */
+package slash.navigation.mapview.mapsforge.renderer;
 
-package slash.navigation.converter.gui.renderer;
-
-import slash.navigation.common.NavigationPosition;
+import slash.navigation.maps.mapsforge.ThemeStyle;
 
 import javax.swing.*;
-
-import static slash.navigation.converter.gui.helpers.PositionHelper.extractDateTime;
+import java.awt.*;
 
 /**
- * Renders the date time column of the positions table.
+ * Renders the {@link ThemeStyle} labels of the style selector combo box.
  *
  * @author Christian Pesch
  */
 
-public class DateTimeColumnTableCellEditor extends PositionsTableCellEditor {
-    public DateTimeColumnTableCellEditor() {
-        super(RIGHT);
-    }
+public class ThemeStyleListCellRenderer extends DefaultListCellRenderer {
+    public Component getListCellRendererComponent(JList list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+        String text = "?";
+        String tooltip = "?";
 
-    protected void formatCell(JLabel label, NavigationPosition position) {
-        label.setText(extractValue(position));
-    }
+        ThemeStyle themeStyle = (ThemeStyle) value;
+        if(themeStyle != null) {
+            text = themeStyle.description();
+            tooltip = themeStyle.getUrl();
+        }
 
-    protected String extractValue(NavigationPosition position) {
-        return extractDateTime(position);
+        JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+        label.setText(text);
+        label.setToolTipText(tooltip);
+        return label;
     }
 }

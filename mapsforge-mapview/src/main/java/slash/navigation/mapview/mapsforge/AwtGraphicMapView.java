@@ -19,12 +19,12 @@
 */
 package slash.navigation.mapview.mapsforge;
 
-import org.mapsforge.core.graphics.GraphicContext;
+import org.mapsforge.core.graphics.Canvas;
 import org.mapsforge.core.graphics.GraphicFactory;
 import org.mapsforge.core.model.BoundingBox;
 import org.mapsforge.core.model.Dimension;
 import org.mapsforge.core.model.LatLong;
-import org.mapsforge.core.util.Parameters;
+import org.mapsforge.core.model.Rotation;
 import org.mapsforge.map.awt.graphics.AwtGraphicFactory;
 import org.mapsforge.map.controller.FrameBufferController;
 import org.mapsforge.map.controller.LayerManagerController;
@@ -39,7 +39,9 @@ import org.mapsforge.map.scalebar.DefaultMapScaleBar;
 import org.mapsforge.map.scalebar.MapScaleBar;
 import org.mapsforge.map.util.MapPositionUtil;
 import org.mapsforge.map.util.MapViewProjection;
-import org.mapsforge.map.view.*;
+import org.mapsforge.map.view.FpsCounter;
+import org.mapsforge.map.view.FrameBuffer;
+import org.mapsforge.map.view.FrameBufferHA3;
 
 import java.awt.*;
 
@@ -54,10 +56,10 @@ import static org.mapsforge.map.awt.graphics.AwtGraphicFactory.*;
 public class AwtGraphicMapView extends Container implements org.mapsforge.map.view.MapView {
     static final GraphicFactory GRAPHIC_FACTORY = INSTANCE;
 
+    private final FpsCounter fpsCounter;
     private final FrameBuffer frameBuffer;
     private final FrameBufferController frameBufferController;
     private final LayerManager layerManager;
-    private final FpsCounter fpsCounter;
     private MapScaleBar mapScaleBar;
     private final MapViewProjection mapViewProjection;
     private final Model model;
@@ -68,11 +70,7 @@ public class AwtGraphicMapView extends Container implements org.mapsforge.map.vi
         this.model = new Model();
 
         this.fpsCounter = new FpsCounter(GRAPHIC_FACTORY, model.displayModel);
-        if (Parameters.FRAME_BUFFER_HA3) {
-            this.frameBuffer = new FrameBufferHA3(this.model.frameBufferModel, this.model.displayModel, GRAPHIC_FACTORY);
-        } else {
-            this.frameBuffer = new FrameBufferOld(this.model.frameBufferModel, this.model.displayModel, GRAPHIC_FACTORY);
-        }
+        this.frameBuffer = new FrameBufferHA3(this.model.frameBufferModel, this.model.displayModel, GRAPHIC_FACTORY);
         this.frameBufferController = FrameBufferController.create(frameBuffer, model);
 
         this.layerManager = new LayerManager(this, model.mapViewPosition, GRAPHIC_FACTORY);
@@ -121,8 +119,8 @@ public class AwtGraphicMapView extends Container implements org.mapsforge.map.vi
     }
 
     public BoundingBox getBoundingBox() {
-        return MapPositionUtil.getBoundingBox(model.mapViewPosition.getMapPosition(), getDimension(),
-                model.displayModel.getTileSize());
+        return MapPositionUtil.getBoundingBox(this.model.mapViewPosition.getMapPosition(), getMapRotation(),
+                this.model.displayModel.getTileSize(), getDimension(), getMapViewCenterX(), getMapViewCenterY());
     }
 
     public Dimension getDimension() {
@@ -141,8 +139,20 @@ public class AwtGraphicMapView extends Container implements org.mapsforge.map.vi
         return layerManager;
     }
 
+    public Rotation getMapRotation() {
+        return model.mapViewPosition.getRotation();
+    }
+
     public MapScaleBar getMapScaleBar() {
         return mapScaleBar;
+    }
+
+    public float getMapViewCenterX() {
+        return model.mapViewPosition.getMapViewCenterX();
+    }
+
+    public float getMapViewCenterY() {
+        return model.mapViewPosition.getMapViewCenterY();
     }
 
     public MapViewProjection getMapViewProjection() {
@@ -153,13 +163,25 @@ public class AwtGraphicMapView extends Container implements org.mapsforge.map.vi
         return model;
     }
 
+    public float getOffsetX() {
+        return getWidth() * (getMapViewCenterX() - 0.5f);
+    }
+
+    public float getOffsetY() {
+        return getHeight() * (getMapViewCenterY() - 0.5f);
+    }
+
     public void paint(Graphics graphics) {
         super.paint(graphics);
 
-        GraphicContext graphicContext = AwtGraphicFactory.createGraphicContext(graphics);
-        frameBuffer.draw(graphicContext);
-        fpsCounter.draw(graphicContext);
-        mapScaleBar.draw(graphicContext);
+        Canvas canvas = AwtGraphicFactory.createGraphicContext(graphics);
+        frameBuffer.draw(canvas, model.mapViewPosition.getRotation());
+        mapScaleBar.draw(canvas);
+        fpsCounter.draw(canvas);
+    }
+
+    public void rotate(Rotation rotation) {
+        this.getModel().mapViewPosition.setRotation(rotation);
     }
 
     public void setCenter(LatLong center) {
@@ -167,8 +189,18 @@ public class AwtGraphicMapView extends Container implements org.mapsforge.map.vi
     }
 
     public void setMapScaleBar(MapScaleBar mapScaleBar) {
-        this.mapScaleBar.destroy();
+        if (this.mapScaleBar != null) {
+            this.mapScaleBar.destroy();
+        }
         this.mapScaleBar = mapScaleBar;
+    }
+
+    public void setMapViewCenterX(float mapViewCenterX) {
+        this.model.mapViewPosition.setMapViewCenterX(mapViewCenterX);
+    }
+
+    public void setMapViewCenterY(float mapViewCenterY) {
+        this.model.mapViewPosition.setMapViewCenterY(mapViewCenterY);
     }
 
     public void setZoomLevel(byte zoomLevel) {

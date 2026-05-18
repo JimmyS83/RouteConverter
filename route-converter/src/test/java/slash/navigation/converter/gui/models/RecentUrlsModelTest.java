@@ -22,14 +22,16 @@ package slash.navigation.converter.gui.models;
 
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
+import java.util.HashMap;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.prefs.AbstractPreferences;
 import java.util.prefs.Preferences;
 
 import static java.lang.Math.min;
@@ -40,12 +42,17 @@ import static slash.common.io.Files.toFile;
 
 public class RecentUrlsModelTest {
     private static final int LIMIT = 10;
-    private final RecentUrlsModel model = new RecentUrlsModel(Preferences.userRoot());
+    private static final String MAXIMUM_RECENT_URL_COUNT_PREFERENCE = "maximumRecentUrlCount";
 
+    private RecentUrlsModel model;
+    private Preferences preferences;
     private List<File> tempFiles;
 
     @Before
     public void setUp() {
+        preferences = new InMemoryPreferences();
+        preferences.putInt(MAXIMUM_RECENT_URL_COUNT_PREFERENCE, LIMIT);
+        model = new RecentUrlsModel(preferences);
         tempFiles = new ArrayList<>();
         model.removeAllUrls();
         assertEquals(0, model.getUrls().size());
@@ -112,7 +119,6 @@ public class RecentUrlsModelTest {
         }
     }
 
-    @Ignore // sometimes fails on command line
     @Test
     public void testLimit() throws IOException {
         assertEquals(0, model.getUrls().size());
@@ -129,7 +135,6 @@ public class RecentUrlsModelTest {
         }
     }
 
-    @Ignore // sometimes fails on command line
     @Test
     public void testSkipNotExistentFiles() throws IOException {
         List<URL> collected = new ArrayList<>();
@@ -148,6 +153,63 @@ public class RecentUrlsModelTest {
             List<URL> actual = model.getUrls();
             assertEquals(expected.size(), actual.size());
             assertEquals(expected, actual);
+        }
+    }
+
+    private static class InMemoryPreferences extends AbstractPreferences {
+        private final Map<String, String> values = new HashMap<>();
+        private final Map<String, InMemoryPreferences> children = new HashMap<>();
+
+        private InMemoryPreferences() {
+            this(null, "");
+        }
+
+        private InMemoryPreferences(AbstractPreferences parent, String name) {
+            super(parent, name);
+        }
+
+        @Override
+        protected void putSpi(String key, String value) {
+            values.put(key, value);
+        }
+
+        @Override
+        protected String getSpi(String key) {
+            return values.get(key);
+        }
+
+        @Override
+        protected void removeSpi(String key) {
+            values.remove(key);
+        }
+
+        @Override
+        protected void removeNodeSpi() {
+            values.clear();
+            children.clear();
+        }
+
+        @Override
+        protected String[] keysSpi() {
+            return values.keySet().toArray(new String[0]);
+        }
+
+        @Override
+        protected String[] childrenNamesSpi() {
+            return children.keySet().toArray(new String[0]);
+        }
+
+        @Override
+        protected AbstractPreferences childSpi(String name) {
+            return children.computeIfAbsent(name, child -> new InMemoryPreferences(this, child));
+        }
+
+        @Override
+        protected void syncSpi() {
+        }
+
+        @Override
+        protected void flushSpi() {
         }
     }
 }

@@ -17,28 +17,20 @@
 
     Copyright (C) 2007 Christian Pesch. All Rights Reserved.
 */
-package slash.navigation.common;
+package slash.navigation.converter.gui.actions;
+
+import slash.navigation.converter.gui.dialogs.ThemeStyleDialog;
+import slash.navigation.gui.SimpleDialog;
+import slash.navigation.gui.actions.SingletonDialogAction;
 
 /**
- * A pair of {@link NavigationPosition}s.
+ * Show styles and categories of the map theme.
  *
  * @author Christian Pesch
  */
 
-public class PositionPair {
-    private final NavigationPosition first;
-    private final NavigationPosition second;
-
-    public PositionPair(NavigationPosition first, NavigationPosition second) {
-        this.first = first;
-        this.second = second;
-    }
-
-    public NavigationPosition getFirst() {
-        return first;
-    }
-
-    public NavigationPosition getSecond() {
-        return second;
+public class ShowThemeStyleAction extends SingletonDialogAction {
+    protected SimpleDialog createDialog() {
+        return new ThemeStyleDialog();
     }
 }

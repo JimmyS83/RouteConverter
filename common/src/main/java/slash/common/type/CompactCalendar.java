@@ -24,6 +24,7 @@ import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import static java.text.DateFormat.MEDIUM;
@@ -59,7 +60,17 @@ public class CompactCalendar {
         return simpleDateFormat;
     }
 
+    public static DateFormat createDateFormat(String pattern, Locale locale) {
+        SimpleDateFormat simpleDateFormat = new SimpleDateFormat(pattern, locale);
+        simpleDateFormat.setTimeZone(UTC);
+        return simpleDateFormat;
+    }
+
     public static CompactCalendar parseDate(String dateString, String dateFormatString) {
+        return parseDate(dateString, dateFormatString, true);
+    }
+
+    public static CompactCalendar parseDate(String dateString, String dateFormatString, boolean logError) {
         if (dateString == null)
             return null;
         try {
@@ -67,7 +78,8 @@ public class CompactCalendar {
             Date parsed = dateFormat.parse(dateString);
             return fromDate(parsed);
         } catch (ParseException e) {
-            log.severe("Could not parse '" + dateString + "' with format '" + dateFormatString + "'");
+            log.log(logError ? Level.SEVERE : Level.FINE,
+                    "Could not parse '" + dateString + "' with format '" + dateFormatString + "'");
         }
         return null;
     }

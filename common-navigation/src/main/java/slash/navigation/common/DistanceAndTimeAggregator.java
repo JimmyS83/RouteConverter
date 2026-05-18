@@ -39,7 +39,7 @@ public class DistanceAndTimeAggregator {
         for (int i = relativeDistancesAndTimes.size() - 1; i >= firstAndLastIndex.lastIndex - 1; i--) {
             DistanceAndTime move = relativeDistancesAndTimes.get(i);
             int moveIndex = i + diff;
-            relativeDistancesAndTimes.put(moveIndex, new DistanceAndTime(move.getDistance(), move.getTimeInMillis()));
+            relativeDistancesAndTimes.put(moveIndex, new DistanceAndTime(move.distance(), move.timeInMillis()));
         }
         relativeDistancesAndTimes.putAll(indexToDistanceAndTime);
         updateAbsoluteDistancesAndTimes(firstAndLastIndex.firstIndex);
@@ -75,7 +75,8 @@ public class DistanceAndTimeAggregator {
         for (int i = firstAndLastIndex.lastIndex + 1; i < sizeBeforeRemoval; i++) {
             DistanceAndTime move = relativeDistancesAndTimes.remove(i);
             int moveIndex = firstAndLastIndex.firstIndex + i - (firstAndLastIndex.lastIndex + 1);
-            relativeDistancesAndTimes.put(moveIndex, new DistanceAndTime(move.getDistance(), move.getTimeInMillis()));
+            // avoid NullPointerException since move could be null
+            relativeDistancesAndTimes.put(moveIndex, move != null ? new DistanceAndTime(move.distance(), move.timeInMillis()) : new DistanceAndTime(0.0, 0L));
             absoluteDistancesAndTimes.remove(i);
         }
 
@@ -92,18 +93,18 @@ public class DistanceAndTimeAggregator {
         DistanceAndTime firstPosition = absoluteDistancesAndTimes.get(startIndex - 1);
         if(firstPosition == null)
             return;
-        int endIndex = relativeDistancesAndTimes.keySet().size();
+        int endIndex = relativeDistancesAndTimes.size();
 
-        double aggregatedDistance = firstPosition.getDistance();
-        long aggregatedTime = firstPosition.getTimeInMillis();
+        double aggregatedDistance = firstPosition.distance();
+        long aggregatedTime = firstPosition.timeInMillis();
         for (int index = startIndex; index < endIndex; index++) {
             DistanceAndTime distanceAndTime = relativeDistancesAndTimes.get(index);
             if(distanceAndTime == null)
                 continue;
-            Double distance = distanceAndTime.getDistance();
+            Double distance = distanceAndTime.distance();
             if (!isEmpty(distance))
                 aggregatedDistance += distance;
-            Long time = distanceAndTime.getTimeInMillis();
+            Long time = distanceAndTime.timeInMillis();
             if (!isEmpty(time))
                 aggregatedTime += time;
             absoluteDistancesAndTimes.put(index, new DistanceAndTime(aggregatedDistance, aggregatedTime));

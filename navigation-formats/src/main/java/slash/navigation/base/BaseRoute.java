@@ -35,10 +35,7 @@ import slash.navigation.copilot.CoPilot6Format;
 import slash.navigation.copilot.CoPilot7Format;
 import slash.navigation.copilot.CoPilot8Format;
 import slash.navigation.copilot.CoPilot9Format;
-import slash.navigation.csv.CsvCommaFormat;
-import slash.navigation.csv.CsvFormat;
-import slash.navigation.csv.CsvRoute;
-import slash.navigation.csv.CsvSemicolonFormat;
+import slash.navigation.csv.*;
 import slash.navigation.excel.ExcelFormat;
 import slash.navigation.excel.ExcelRoute;
 import slash.navigation.excel.MicrosoftExcel2008Format;
@@ -536,6 +533,19 @@ public abstract class BaseRoute<P extends BaseNavigationPosition, F extends Base
         setName(routeName);
     }
 
+    public void revert(int[] indices) {
+        Arrays.sort(indices);
+        List<P> existing = getPositions();
+        List<P> positions = new ArrayList<>();
+        for (int row : indices) {
+            positions.add(0, existing.get(row));
+        }
+        int index = 0;
+        for (int row : indices) {
+            existing.set(row, positions.get(index++));
+        }
+    }
+
     public abstract P createPosition(Double longitude, Double latitude, Double elevation, Double speed, CompactCalendar time, String description);
 
     protected abstract BcrRoute asBcrFormat(BcrFormat format);
@@ -630,6 +640,13 @@ public abstract class BaseRoute<P extends BaseNavigationPosition, F extends Base
         if (getFormat() instanceof CsvSemicolonFormat)
             return (CsvRoute) this;
         return asCsvFormat(new CsvSemicolonFormat());
+    }
+
+    @SuppressWarnings({"UnusedDeclaration"})
+    public CsvRoute asFlightradar24Format() {
+        if (getFormat() instanceof Flightradar24Format)
+            return (CsvRoute) this;
+        return asCsvFormat(new Flightradar24Format());
     }
 
     @SuppressWarnings({"UnusedDeclaration", "rawtypes"})

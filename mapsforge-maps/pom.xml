@@ -6,7 +6,7 @@
     <parent>
         <groupId>slash.navigation</groupId>
         <artifactId>RouteConverter</artifactId>
-        <version>3.1-SNAPSHOT</version>
+        <version>3.4-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
@@ -55,23 +55,23 @@
         </dependency>
 
         <dependency>
-            <groupId>org.mapsforge</groupId>
+            <groupId>com.github.mapsforge.mapsforge</groupId>
             <artifactId>mapsforge-map</artifactId>
             <version>${mapsforge.version}</version>
         </dependency>
         <dependency>
-            <groupId>org.mapsforge</groupId>
+            <groupId>com.github.mapsforge.mapsforge</groupId>
             <artifactId>mapsforge-map-reader</artifactId>
             <version>${mapsforge.version}</version>
         </dependency>
         <dependency>
-            <groupId>org.mapsforge</groupId>
+            <groupId>com.github.mapsforge.mapsforge</groupId>
             <artifactId>mapsforge-themes</artifactId>
             <version>${mapsforge.version}</version>
         </dependency>
         <dependency>
-            <groupId>net.andreinc.aleph</groupId>
-            <artifactId>aleph-formatter</artifactId>
+            <groupId>net.andreinc</groupId>
+            <artifactId>aleph</artifactId>
             <version>${alephformatter.version}</version>
         </dependency>
     </dependencies>

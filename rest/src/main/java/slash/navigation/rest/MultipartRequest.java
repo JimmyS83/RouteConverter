@@ -27,8 +27,9 @@ import org.apache.hc.core5.http.io.HttpClientResponseHandler;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.apache.hc.core5.http.ContentType.APPLICATION_JSON;
 import static org.apache.hc.core5.http.ContentType.APPLICATION_OCTET_STREAM;
 import static org.apache.hc.core5.http.HttpHeaders.ACCEPT;
 import static org.apache.hc.core5.http.HttpHeaders.LOCATION;
@@ -41,7 +42,6 @@ import static slash.common.io.Transfer.encodeUriButKeepSlashes;
  */
 
 abstract class MultipartRequest extends HttpRequest {
-    private static final ContentType TEXT_PLAIN_UTF8 = ContentType.create("text/plain", UTF_8);
     private MultipartEntityBuilder builder;
     private boolean containsFileLargerThan4k;
 
@@ -50,13 +50,15 @@ abstract class MultipartRequest extends HttpRequest {
     }
 
     private MultipartEntityBuilder getBuilder() {
-        if (builder == null)
+        if (builder == null) {
             builder = MultipartEntityBuilder.create();
+            builder.setCharset(StandardCharsets.UTF_8);
+        }
         return builder;
     }
 
     public void addString(String name, String value) {
-        getBuilder().addTextBody(name, value, TEXT_PLAIN_UTF8);
+        getBuilder().addTextBody(name, value, ContentType.APPLICATION_JSON);
     }
 
     public void addFile(String name, File value) {

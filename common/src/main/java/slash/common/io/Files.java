@@ -26,6 +26,7 @@ import java.io.*;
 import java.net.MalformedURLException;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.nio.file.LinkOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
@@ -352,42 +353,49 @@ public class Files {
         setLastModified(file, lastModified.getTimeInMillis());
     }
 
-    /**
-     * Collects files/directories with the given extension(s) in the given
-     * list. If path is a directory, it recursively descends the directory
-     * tree. If no extension is given, all files are collected.
-     *
-     * @param path               the path to collect files below
-     * @param collectDirectories decides whether directories are collected
-     * @param collectFiles       decides whether file are collected
-     * @param extensions         the extensions in lower case
-     * @param list               the list to add hits to
-     */
     private static void recursiveCollect(File path,
                                          final boolean collectDirectories,
                                          final boolean collectFiles,
                                          final Set<String> extensions,
+                                         final Set<String> visitedDirectories,
                                          final List<File> list) {
         if (path.isFile()) {
-            if (collectFiles && extensions.contains(getExtension(path)))
+            if (collectFiles && (extensions == null || extensions.isEmpty() || extensions.contains(getExtension(path))))
                 list.add(path);
-
-        } else {
-            if (collectDirectories)
-                list.add(path);
-
-            //noinspection ResultOfMethodCallIgnored
-            path.listFiles(file -> {
-                recursiveCollect(file, collectDirectories, collectFiles, extensions, list);
-                return true;
-            });
+            return;
         }
+
+        if (!visitedDirectories.add(realPath(path)))
+            return;
+
+        if (collectDirectories)
+            list.add(path);
+
+        for (File file : listFiles(path))
+            recursiveCollect(file, collectDirectories, collectFiles, extensions, visitedDirectories, list);
+    }
+
+    private static String realPath(File path) {
+        try {
+            return path.toPath().toRealPath().toString();
+        } catch (IOException e) {
+            return path.getAbsoluteFile().toPath().normalize().toString();
+        }
+    }
+
+    private static File[] listFiles(File path) {
+        File[] files = path.listFiles();
+        return files != null ? files : new File[0];
+    }
+
+    private static boolean isDirectoryNoFollow(File path) {
+        return java.nio.file.Files.isDirectory(path.toPath(), LinkOption.NOFOLLOW_LINKS);
     }
 
     /**
      * Collects files below the given path with the given extension(s).
      * If path is a directory, the collection recursively descends the
-     * directory tree. The extension comparison is case insensitive
+     * directory tree. The extension comparison is case-insensitive
      *
      * @param path       the path to collect files below
      * @param extensions the case insensitively compare extensions
@@ -401,7 +409,7 @@ public class Files {
                 collect(Collectors.toSet()) : null;
 
         List<File> list = new ArrayList<>(1);
-        recursiveCollect(path, false, true, lowercase, list);
+        recursiveCollect(path, false, true, lowercase, new HashSet<>(), list);
         return list;
     }
 
@@ -438,20 +446,25 @@ public class Files {
     }
 
     public static void recursiveDelete(File path) throws IOException {
-        File[] files = path.listFiles();
-        if (files != null) {
-            for (File file : files) {
-                if (file.isDirectory())
-                    recursiveDelete(file);
-                delete(file);
-            }
+        if (!isDirectoryNoFollow(path)) {
+            delete(path);
+            return;
         }
+
+        for (File file : listFiles(path)) {
+            if (isDirectoryNoFollow(file))
+                recursiveDelete(file);
+            delete(file);
+        }
+
         delete(path);
     }
 
     public static <T> String asDialogString(List<T> list, boolean shorten) {
         if (list == null)
             return "null";
+        if (list.isEmpty())
+            return "none";
 
         StringBuilder buffer = new StringBuilder();
         for (int i = 0; i < list.size(); i++) {

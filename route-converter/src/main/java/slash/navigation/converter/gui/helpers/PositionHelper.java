@@ -32,17 +32,12 @@ import slash.navigation.common.UnitSystem;
 import slash.navigation.converter.gui.RouteConverter;
 
 import java.io.File;
-import java.text.DateFormat;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.prefs.Preferences;
 
 import static java.lang.Math.abs;
 import static java.lang.Math.round;
 import static java.lang.String.format;
 import static slash.common.io.Transfer.roundFraction;
-import static slash.common.type.CompactCalendar.fromDate;
 import static slash.navigation.base.WaypointType.Photo;
 import static slash.navigation.base.WaypointType.Voice;
 import static slash.navigation.common.UnitConversion.METERS_OF_A_KILOMETER;
@@ -149,85 +144,29 @@ public class PositionHelper {
         return format("%d bpm", round(heartBeat));
     }
 
-    public static String extractPattern(DateFormat dateFormat) {
-        return dateFormat instanceof SimpleDateFormat ? ((SimpleDateFormat)dateFormat).toLocalizedPattern() : dateFormat.toString();
-    }
-
-    // date time
-
-    public static DateFormat getDateTimeFormat() {
-        String timeZoneId = RouteConverter.getInstance().getTimeZone().getTimeZoneId();
-        return Transfer.getDateTimeFormat(timeZoneId);
-    }
-
-    private static String formatDateTime(CompactCalendar time) {
-        return getDateTimeFormat().format(time.getTime());
-    }
-
-    public static String extractDateTime(NavigationPosition position) {
-        CompactCalendar time = position.getTime();
-        return time != null ? formatDateTime(time) : "";
-    }
-
-    public static CompactCalendar parseDateTime(String stringValue) throws ParseException {
-        Date parsed = getDateTimeFormat().parse(stringValue);
-        return fromDate(parsed);
-    }
-
     // date
-
-    public static DateFormat getDateFormat() {
-        String timeZoneId = RouteConverter.getInstance().getTimeZone().getTimeZoneId();
-        return Transfer.getDateFormat(timeZoneId);
-    }
 
     public static String formatDate(CompactCalendar time, String timeZone) {
         if(time == null)
             return "?";
-        return Transfer.getDateFormat(timeZone).format(time.getTime());
+        return Transfer.getDateFormat(timeZone).format(time);
     }
 
     public static String formatDate(CompactCalendar time) {
         return formatDate(time, RouteConverter.getInstance().getTimeZone().getTimeZoneId());
     }
 
-    public static String extractDate(NavigationPosition position) {
-        CompactCalendar time = position.getTime();
-        return time != null ? formatDate(time) : "";
-    }
-
-    public static CompactCalendar parseDate(String stringValue) throws ParseException {
-        Date parsed = getDateFormat().parse(stringValue);
-        return fromDate(parsed);
-    }
-
     // time
 
-    public static DateFormat getTimeFormat() {
-        String timeZoneId = RouteConverter.getInstance().getTimeZone().getTimeZoneId();
-        return Transfer.getTimeFormat(timeZoneId);
-    }
-
-    public static String formatTime(CompactCalendar time, String timeZone) {
+    public static String formatTime(CompactCalendar time) {
         if(time == null)
             return "?";
-        return Transfer.getTimeFormat(timeZone).format(time.getTime());
+        long totalSeconds = time.getTimeInMillis() / 1000;
+        long hours = totalSeconds / 3600;
+        long minutes = (totalSeconds % 3600) / 60;
+        long seconds = totalSeconds % 60;
+        return String.format("%02d:%02d:%02d", hours, minutes, seconds);
     }
-
-    public static String formatTime(CompactCalendar time) {
-        return formatTime(time, RouteConverter.getInstance().getTimeZone().getTimeZoneId());
-    }
-
-    public static String extractTime(NavigationPosition position) {
-        CompactCalendar time = position.getTime();
-        return time != null ? formatTime(time) : "";
-    }
-
-    public static CompactCalendar parseTime(String stringValue) throws ParseException {
-        Date parsed = getTimeFormat().parse(stringValue);
-        return fromDate(parsed);
-    }
-
 
     private static long toNextUnit(Long size, long nextUnit) {
         return round(size / (double) nextUnit + 0.5);
@@ -254,8 +193,7 @@ public class PositionHelper {
         if (position instanceof Wgs84Position wgs84Position) {
             WaypointType waypointType = wgs84Position.getWaypointType();
             if (waypointType != null && (waypointType.equals(Photo) || waypointType.equals(Voice))) {
-                File file = wgs84Position.getOrigin(File.class);
-                return file;
+                return wgs84Position.getOrigin(File.class);
             }
         }
         return null;

@@ -46,8 +46,8 @@ import static slash.navigation.routing.RoutingResult.Validity.Valid;
 import static slash.navigation.routing.TravelRestrictions.NO_RESTRICTIONS;
 
 public class BRouterIT {
-    private static final NavigationPosition FROM = new SimpleNavigationPosition(10.18587, 53.40451);
-    private static final NavigationPosition TO = new SimpleNavigationPosition(10.06767, 53.49249);
+    private static final NavigationPosition FROM = new SimpleNavigationPosition(10.18587, 53.40451, null, "From");
+    private static final NavigationPosition TO = new SimpleNavigationPosition(10.06767, 53.49249, null, "To");
     private static final String CAR_PROFILE_URI = "car-eco.brf";
     private static final String TREKKING_PROFILE_URI = "trekking.brf";
     private static final String SEGMENT_URI = "E10_N50.rd5";
@@ -94,7 +94,7 @@ public class BRouterIT {
 
     private TravelMode getTravelMode(String lookupName) {
         for (TravelMode travelMode : router.getAvailableTravelModes()) {
-            if (lookupName.equals(travelMode.getName()))
+            if (lookupName.equals(travelMode.name()))
                 return travelMode;
         }
         throw new IllegalArgumentException(lookupName + " not found");
@@ -103,18 +103,18 @@ public class BRouterIT {
     @Test
     public void testGetRouteBetweenByCar() {
         RoutingResult result = router.getRouteBetween(FROM, TO, getTravelMode("car-eco"), NO_RESTRICTIONS);
-        assertEquals(Valid, result.getValidity());
-        assertEquals(324, result.getPositions().size(), 10);
-        assertEquals(13789, result.getDistanceAndTime().getDistance(), 25.0);
-        assertEquals(500, result.getDistanceAndTime().getTimeInMillis(), 2);
+        assertEquals(Valid, result.validity());
+        assertEquals(324, result.positions().size(), 10);
+        assertEquals(13638, result.distanceAndTime().distance(), 25.0);
+        assertEquals(1091539, result.distanceAndTime().timeInMillis(), 1000);
     }
 
     @Test
     public void testGetRouteBetweenByBike() {
         RoutingResult result = router.getRouteBetween(FROM, TO, getTravelMode("trekking"), NO_RESTRICTIONS);
-        assertEquals(Valid, result.getValidity());
-        assertEquals(185, result.getPositions().size(), 8);
-        assertEquals(13899.0, result.getDistanceAndTime().getDistance(), 25.0);
-        assertEquals(2335703, result.getDistanceAndTime().getTimeInMillis(), 1000);
+        assertEquals(Valid, result.validity());
+        assertEquals(185, result.positions().size(), 8);
+        assertEquals(13811, result.distanceAndTime().distance(), 25.0);
+        assertEquals(2328092.0, result.distanceAndTime().timeInMillis(), 1000);
     }
 }

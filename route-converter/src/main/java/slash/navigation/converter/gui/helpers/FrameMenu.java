@@ -69,6 +69,7 @@ public class FrameMenu {
         positionMenu.add(createItem("up"));
         positionMenu.add(createItem("down"));
         positionMenu.add(createItem("bottom"));
+        positionMenu.add(createItem("revert-positions"));
         positionMenu.addSeparator();
         positionMenu.add(createItem("find-place"));
         JMenu completeMenu = createMenu("complete");
@@ -79,6 +80,7 @@ public class FrameMenu {
         completeMenu.add(createItem("add-time"));
         completeMenu.add(createItem("add-number"));
         positionMenu.add(completeMenu);
+        positionMenu.add(createItem("snap-to-road"));
         positionMenu.addSeparator();
         positionMenu.add(createItem("insert-positions"));
         positionMenu.add(createItem("delete-positions"));
@@ -90,7 +92,7 @@ public class FrameMenu {
         positionlistMenu.addSeparator();
         positionlistMenu.add(createItem("convert-route-to-track"));
         positionlistMenu.add(createItem("convert-track-to-route"));
-        positionlistMenu.add(createItem("revert-positions"));
+        positionlistMenu.add(createItem("revert-all-positionlist"));
         positionlistMenu.add(createMenu("sort-positions"));
         positionlistMenu.addSeparator();
         positionlistMenu.add(createItem("split-positionlist"));
@@ -114,6 +116,7 @@ public class FrameMenu {
         extrasMenu.add(createItem("show-downloads"));
         extrasMenu.add(createItem("show-options"));
         extrasMenu.add(createItem("login"));
+        extrasMenu.add(createItem("logout"));
 
         JMenu helpMenu = createMenu("help");
         helpMenu.add(createItem("help-topics"));

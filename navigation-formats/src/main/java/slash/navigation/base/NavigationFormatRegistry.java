@@ -32,6 +32,7 @@ import slash.navigation.copilot.CoPilot8Format;
 import slash.navigation.copilot.CoPilot9Format;
 import slash.navigation.csv.CsvCommaFormat;
 import slash.navigation.csv.CsvSemicolonFormat;
+import slash.navigation.csv.Flightradar24Format;
 import slash.navigation.excel.MicrosoftExcel2008Format;
 import slash.navigation.excel.MicrosoftExcel97Format;
 import slash.navigation.fit.FitFormat;
@@ -198,6 +199,7 @@ public class NavigationFormatRegistry {
         // greedy native formats
         addFormat(CsvCommaFormat.class);
         addFormat(CsvSemicolonFormat.class);
+        addFormat(Flightradar24Format.class);
 
         // second try for broken files
         addFormat(GarbleColumbusGpsType1Format.class);
@@ -252,11 +254,7 @@ public class NavigationFormatRegistry {
 
     private List<NavigationFormat> sortByName(List<NavigationFormat> formats) {
         NavigationFormat[] formatsArray = formats.toArray(new NavigationFormat[0]);
-        sort(formatsArray, new Comparator<NavigationFormat>() {
-            public int compare(NavigationFormat f1, NavigationFormat f2) {
-                return f1.getName().toLowerCase().compareTo(f2.getName().toLowerCase());
-            }
-        });
+        sort(formatsArray, Comparator.comparing(f -> f.getName().toLowerCase()));
         return asList(formatsArray);
     }
 

@@ -54,7 +54,7 @@ import static slash.navigation.converter.gui.models.LocalActionConstants.POINTS_
 import static slash.navigation.converter.gui.models.PositionColumns.DESCRIPTION_COLUMN_INDEX;
 import static slash.navigation.converter.gui.models.PositionColumns.PHOTO_COLUMN_INDEX;
 import static slash.navigation.gui.helpers.JMenuHelper.registerAction;
-import static slash.navigation.gui.helpers.JTableHelper.calculateRowHeight;
+import static slash.navigation.gui.helpers.JTableHelper.getDefaultRowHeight;
 import static slash.navigation.gui.helpers.JTableHelper.isFirstToLastRow;
 
 /**
@@ -84,7 +84,7 @@ public class PointOfInterestPanel implements PanelInTab {
 
         positionsModel = new FilteringPositionsModel<>(r.getConvertPanel().getPositionsModel(), new PointOfInterestPositionPredicate());
         tablePointsOfInterest.setModel(getPositionsModel());
-        PointsOfInterestTableColumnModel tableColumnModel = new PointsOfInterestTableColumnModel();
+        PointsOfInterestTableColumnModel tableColumnModel = new PointsOfInterestTableColumnModel(new PositionsModelCallbackImpl(r.getTimeZone()));
         tablePointsOfInterest.setColumnModel(tableColumnModel);
 
         r.getUnitSystemModel().addChangeListener(new ChangeListener() {
@@ -102,7 +102,7 @@ public class PointOfInterestPanel implements PanelInTab {
             public void valueChanged(ListSelectionEvent e) {
                 if (e.getValueIsAdjusting())
                     return;
-                if (getPositionsModel().isContinousRange())
+                if (getPositionsModel().isContinousRangeOperation())
                     return;
                 handlePositionsUpdate();
             }
@@ -111,7 +111,7 @@ public class PointOfInterestPanel implements PanelInTab {
             public void tableChanged(TableModelEvent e) {
                 if (!isFirstToLastRow(e))
                     return;
-                if (getPositionsModel().isContinousRange())
+                if (getPositionsModel().isContinousRangeOperation())
                     return;
                 handlePositionsUpdate();
             }
@@ -148,10 +148,6 @@ public class PointOfInterestPanel implements PanelInTab {
         handlePositionsUpdate();
         for (PositionTableColumn column : tableColumnModel.getPreparedColumns())
             handleColumnVisibilityUpdate(column);
-    }
-
-    private int getDefaultRowHeight() {
-        return calculateRowHeight(this, new DescriptionColumnTableCellEditor(), new SimpleNavigationPosition(null, null));
     }
 
     public Component getRootComponent() {
@@ -194,7 +190,8 @@ public class PointOfInterestPanel implements PanelInTab {
 
     private void handleColumnVisibilityUpdate(PositionTableColumn column) {
         if (column.getModelIndex() == PHOTO_COLUMN_INDEX)
-            tablePointsOfInterest.setRowHeight(column.isVisible() ? ROW_HEIGHT_FOR_PHOTO_COLUMN : getDefaultRowHeight());
+            tablePointsOfInterest.setRowHeight(column.isVisible() ? ROW_HEIGHT_FOR_PHOTO_COLUMN :
+                    getDefaultRowHeight(this, new DescriptionColumnTableCellEditor(), new SimpleNavigationPosition(null, null)));
     }
 
     public void addAudio(Wgs84Position position, File file) {
@@ -245,6 +242,9 @@ public class PointOfInterestPanel implements PanelInTab {
 
     private static Method $$$cachedGetBundleMethod$$$ = null;
 
+    /**
+     * @noinspection ALL
+     */
     private String $$$getMessageFromBundle$$$(String path, String key) {
         ResourceBundle bundle;
         try {
