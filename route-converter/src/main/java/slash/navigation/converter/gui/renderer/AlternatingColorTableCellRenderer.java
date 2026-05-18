@@ -36,10 +36,7 @@ public class AlternatingColorTableCellRenderer extends DefaultTableCellRenderer 
 
     public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int rowIndex, int columnIndex) {
         JLabel label = (JLabel) super.getTableCellRendererComponent(table, value, isSelected, hasFocus, rowIndex, columnIndex);
-        if (rowIndex % 2 == 0)
-            label.setBackground(isSelected ? SELECTED_BACKGROUND_COLOR : table.getBackground());
-        else
-            label.setBackground(isSelected ? SELECTED_BACKGROUND_COLOR : BACKGROUND_COLOR);
+        label.setBackground(isSelected ? SELECTED_BACKGROUND_COLOR : table.getBackground());
         return label;
     }
 }
