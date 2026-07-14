@@ -192,6 +192,8 @@ public class BrowsePanel implements PanelInTab {
         handleCategoryTreeUpdate();
 
         new Thread(() -> {
+            /** Do not load remote routes
+
             String selected = r.getCategoryPreference();
             if (TreePathStringConversion.isRemote(selected)) {
                 // do the loading in a separate thread since treeCategories.setModel(categoryTreeModel)
@@ -209,7 +211,14 @@ public class BrowsePanel implements PanelInTab {
                     stopWaitCursor(r.getFrame().getRootPane());
                 }
             });
+            **/
         }, "CategoryTreeInitializer").start();
+				
+        // Expand Locally stored routes
+        String selected = r.getCategoryPreference();
+        selectTreePath(TreePathStringConversion.fromString(root, selected), true);
+        treeCategories.expandPath(new TreePath(new Object[]{root, localRoot}));
+
     }
 
     private void initializeCategoryTree() {
