@@ -26,11 +26,10 @@ import org.mapsforge.map.layer.download.tilesource.OnlineTileSource;
 import slash.navigation.maps.tileserver.TileServer;
 
 import java.net.MalformedURLException;
+import java.net.URI;
 import java.net.URL;
 import java.util.Locale;
 import java.util.prefs.Preferences;
-
-import static slash.navigation.rest.HttpRequest.USER_AGENT;
 
 /**
  * A {@link OnlineTileSource} that is configured from a {@link TileServer}.
@@ -54,7 +53,8 @@ public class TileServerMapSource extends AbstractTileSource {
     public TileServerMapSource(TileServer tileServer) {
         super(getHostNames(tileServer), 80);
         this.tileServer = tileServer;
-        setUserAgent(!tileServer.active() ? "RouteConverter Map Client /" + System.getProperty("rest", "3.0") : USER_AGENT);
+        // Identify compliantly to tile providers (esp. OpenStreetMap's usage policy); never masquerade as a browser
+        setUserAgent("RouteConverter/" + System.getProperty("rest", "3.0") + " (+https://www.routeconverter.com/)");
         setTimeoutConnect(30 * 1000);
         setTimeoutRead(120 * 1000);
     }
@@ -90,6 +90,6 @@ public class TileServerMapSource extends AbstractTileSource {
                 .fmt();
         if(getApiKey() != null)
             url += ("?apikey=" + getApiKey());
-        return new URL(url);
+        return URI.create(url).toURL();
     }
 }

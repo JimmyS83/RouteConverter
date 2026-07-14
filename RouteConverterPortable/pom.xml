@@ -5,9 +5,9 @@
     <name>RouteConverter for Windows as Portable App</name>
     <parent>
         <groupId>slash.navigation</groupId>
-        <artifactId>route-converter-build</artifactId>
-        <version>3.4-SNAPSHOT</version>
-        <relativePath>../route-converter-build/pom.xml</relativePath>
+        <artifactId>RouteConverter</artifactId>
+        <version>3.5-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
     </parent>
 
     <build>
@@ -19,10 +19,10 @@
             </resource>
 
             <resource>
-                <directory>${basedir}/../RouteConverterWindowsOpenSource/target</directory>
+                <directory>${basedir}/../RouteConverterWindows/target</directory>
                 <targetPath>RouteConverterPortable/App/RouteConverter</targetPath>
                 <includes>
-                    <include>RouteConverterWindowsOpenSource.jar</include>
+                    <include>RouteConverterWindows.jar</include>
                 </includes>
             </resource>
 
@@ -40,7 +40,7 @@
     <dependencies>
         <dependency>
             <groupId>${project.groupId}</groupId>
-            <artifactId>RouteConverterWindowsOpenSource</artifactId>
+            <artifactId>RouteConverterWindows</artifactId>
             <version>${project.version}</version>
         </dependency>
     </dependencies>

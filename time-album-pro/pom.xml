@@ -6,14 +6,14 @@
     <parent>
         <groupId>slash.navigation</groupId>
         <artifactId>RouteConverter</artifactId>
-        <version>3.4-SNAPSHOT</version>
+        <version>3.5-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
     <dependencies>
         <dependency>
             <groupId>${project.groupId}</groupId>
-            <artifactId>route-converter-opensource</artifactId>
+            <artifactId>route-converter</artifactId>
             <version>${project.version}</version>
         </dependency>
     </dependencies>

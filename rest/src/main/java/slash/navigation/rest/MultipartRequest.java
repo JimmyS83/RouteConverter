@@ -24,6 +24,7 @@ import org.apache.hc.client5.http.entity.mime.MultipartEntityBuilder;
 import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.io.HttpClientResponseHandler;
+import org.apache.hc.core5.http.io.entity.StringEntity;
 
 import java.io.File;
 import java.io.IOException;
@@ -43,6 +44,7 @@ import static slash.common.io.Transfer.encodeUriButKeepSlashes;
 
 abstract class MultipartRequest extends HttpRequest {
     private MultipartEntityBuilder builder;
+    private HttpEntity rawEntity;
     private boolean containsFileLargerThan4k;
 
     MultipartRequest(HttpUriRequestBase method, Credentials credentials) {
@@ -61,6 +63,15 @@ abstract class MultipartRequest extends HttpRequest {
         getBuilder().addTextBody(name, value, ContentType.APPLICATION_JSON);
     }
 
+    /**
+     * Sends the given string verbatim as the request body (not multipart), so the
+     * transmitted bytes are exactly {@code body} encoded with the content type's
+     * charset. Used where the server expects a raw JSON body it can sign-verify.
+     */
+    public void setBody(String body, ContentType contentType) {
+        this.rawEntity = new StringEntity(body, contentType);
+    }
+
     public void addFile(String name, File value) {
         if (value.exists() && value.length() > 4096)
             containsFileLargerThan4k = true;
@@ -77,11 +88,27 @@ abstract class MultipartRequest extends HttpRequest {
         return containsFileLargerThan4k;
     }
 
-    public <T> T execute(HttpClientResponseHandler<T> responseHandler) throws IOException {
-        if (builder != null) {
+    public void setHeader(String name, String value) {
+        super.setHeader(name, value);
+    }
+
+    /**
+     * Sets the request entity from the raw body if one was supplied via {@link #setBody},
+     * otherwise from the accumulated multipart parts. A raw body takes precedence: it is
+     * sent verbatim so the server can sign-verify the exact bytes. Package-visible so the
+     * entity assembly can be verified without a live transport.
+     */
+    void prepareEntity() {
+        if (rawEntity != null) {
+            getMethod().setEntity(rawEntity);
+        } else if (builder != null) {
             HttpEntity entity = builder.build();
             getMethod().setEntity(entity);
         }
+    }
+
+    public <T> T execute(HttpClientResponseHandler<T> responseHandler) throws IOException {
+        prepareEntity();
         return super.execute(responseHandler);
     }
 

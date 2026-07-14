@@ -1,0 +1,86 @@
+/*
+    This file is part of BaseRouteConverter.
+
+    BaseRouteConverter is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+
+    BaseRouteConverter is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with BaseRouteConverter; if not, write to the Free Software
+    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+
+    Copyright (C) 2007 Christian Pesch. All Rights Reserved.
+*/
+
+package slash.navigation.converter.gui.helpers;
+
+import slash.navigation.common.DistanceAndTimeAggregator;
+import slash.navigation.converter.gui.BaseRouteConverter;
+import slash.navigation.maps.tileserver.TileServerMapManager;
+import slash.navigation.mapview.MapView;
+import slash.navigation.mapview.MapViewCallback;
+import slash.navigation.routing.RoutingService;
+import slash.navigation.routing.TravelMode;
+import slash.navigation.routing.TravelRestrictions;
+
+import static slash.navigation.converter.gui.helpers.PositionHelper.formatLatitude;
+import static slash.navigation.converter.gui.helpers.PositionHelper.formatLongitude;
+
+/**
+ * Implements the common callbacks from the {@link MapView} for the BaseRouteConverter services.
+ *
+ * @author Christian Pesch
+ */
+
+public abstract class MapViewCallbackImpl implements MapViewCallback {
+
+    public String createDescription(int index, String description) {
+        return BaseRouteConverter.getInstance().getPositionAugmenter().createDescription(index, description);
+    }
+
+    public String createCoordinates(Double longitude, Double latitude) {
+        return formatLongitude(longitude) + "," + formatLatitude(latitude);
+    }
+
+    public void setSelectedPositions(int[] selectedPositions, boolean replaceSelection) {
+        BaseRouteConverter.getInstance().getConvertPanel().getPositionsSelectionModel().setSelectedPositions(selectedPositions, replaceSelection);
+    }
+
+    public void complementData(int[] rows, boolean description, boolean time, boolean elevation, boolean waitForDownload, boolean trackUndo) {
+        BaseRouteConverter.getInstance().getPositionAugmenter().addData(rows, description, time, elevation, waitForDownload, trackUndo);
+    }
+
+    public RoutingService getRoutingService() {
+        return BaseRouteConverter.getInstance().getRoutingServiceFacade().getRoutingService();
+    }
+
+    public TravelMode getTravelMode() {
+        return BaseRouteConverter.getInstance().getRoutingServiceFacade().getRoutingPreferencesModel().getTravelMode();
+    }
+
+    public TravelRestrictions getTravelRestrictions() {
+        return BaseRouteConverter.getInstance().getRoutingServiceFacade().getRoutingPreferencesModel().getTravelRestrictions();
+    }
+
+    public boolean isShowAllPositionsAfterLoading() {
+        return BaseRouteConverter.getInstance().getShowAllPositionsAfterLoading().getBoolean();
+    }
+
+    public boolean isRecenterAfterZooming() {
+        return BaseRouteConverter.getInstance().getRecenterAfterZooming().getBoolean();
+    }
+
+    public TileServerMapManager getTileServerMapManager() {
+        return BaseRouteConverter.getInstance().getTileServerMapManager();
+    }
+
+    public DistanceAndTimeAggregator getDistanceAndTimeAggregator() {
+        return BaseRouteConverter.getInstance().getDistanceAndTimeAggregator();
+    }
+}

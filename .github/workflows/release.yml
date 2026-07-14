@@ -1,0 +1,148 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+'
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux-mac:
+    uses: ./.github/workflows/_build-linux-mac.yml
+    with:
+      artefact-name: release-linux-mac
+      retention-days: 30
+      sign: true
+      signing-policy-slug: release-signing   # production cert (rc-meta 00043); requires manual approval in the SignPath app during the build
+    secrets: inherit
+
+  build-windows:
+    uses: ./.github/workflows/_build-windows.yml
+    with:
+      artefact-name: release-windows
+      retention-days: 30
+      sign: true
+      signing-policy-slug: release-signing   # production cert (rc-meta 00043); requires manual approval in the SignPath app during the build
+    secrets: inherit
+
+  publish:
+    needs: [build-linux-mac, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve version from tag
+        id: ver
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG}"
+          echo "tag=$TAG"         >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v8
+        with:
+          path: incoming
+          pattern: release-*
+      - name: Flatten artefacts
+        run: |
+          mkdir -p artefacts
+          find incoming -mindepth 2 -type f -exec mv -t artefacts/ {} +
+          ls -la artefacts/
+      - name: Build previous-releases archive (apply *-app.zip rename)
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          mkdir -p "previous-releases/$VERSION"
+          cp artefacts/* "previous-releases/$VERSION/"
+          for stem in RouteConverterMac TimeAlbumProMac; do
+            for arch in x64 aarch64; do
+              src="previous-releases/$VERSION/$stem-$arch-app.zip"
+              dst="previous-releases/$VERSION/$stem-$arch.app.zip"
+              [[ -f "$src" ]] && mv "$src" "$dst"
+            done
+          done
+          ls -la "previous-releases/$VERSION/"
+      - name: Configure SSH
+        env:
+          DEPLOY_KEY:  ${{ secrets.RC_RELEASE_DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.RC_RELEASE_DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+      - name: Rsync to static.routeconverter.com/downloads/release/
+        env:
+          DEPLOY_HOST: ${{ secrets.RC_RELEASE_DEPLOY_HOST }}
+        run: |
+          # --delete: /latest/ must only hold the current release; prunes prior-version
+          # orphans (renamed/discontinued assets) that would otherwise serve stale builds
+          rsync -av --delete --omit-dir-times --no-perms \
+            artefacts/ \
+            "rc-release-deploy@${DEPLOY_HOST}:/var/www/routeconverter.com/static/downloads/release/"
+      - name: Rsync to static.routeconverter.com/downloads/previous-releases/<v>/
+        env:
+          DEPLOY_HOST: ${{ secrets.RC_RELEASE_DEPLOY_HOST }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          rsync -av --omit-dir-times --no-perms \
+            "previous-releases/$VERSION/" \
+            "rc-release-deploy@${DEPLOY_HOST}:/var/www/routeconverter.com/static/downloads/previous-releases/$VERSION/"
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO:     ${{ github.repository }}
+          TAG:      ${{ steps.ver.outputs.tag }}
+          VERSION:  ${{ steps.ver.outputs.version }}
+        run: |
+          gh release create "$TAG" artefacts/* \
+            --repo "$REPO" \
+            --title "RouteConverter $VERSION" \
+            --generate-notes \
+            --verify-tag
+
+  publish-javadoc:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21.0.11'
+      - uses: actions/cache@v5
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2
+
+      - name: mvn javadoc:aggregate
+        run: |
+          ./mvnw --batch-mode -Prouteconverter -Dmaven.build.number=${{ github.run_number }} -DskipTests install
+          ./mvnw --batch-mode javadoc:aggregate \
+            -Dmaven.build.number=${{ github.run_number }} \
+            -Dmaven.javadoc.failOnError=false \
+            -Dadditionalparam=-Xdoclint:none \
+            -Ddoclint=none
+
+      - name: Configure SSH
+        env:
+          DEPLOY_KEY:  ${{ secrets.RC_RELEASE_DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.RC_RELEASE_DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Rsync to static.routeconverter.com/javadoc/
+        env:
+          DEPLOY_HOST: ${{ secrets.RC_RELEASE_DEPLOY_HOST }}
+        run: |
+          rsync -av --delete --omit-dir-times --no-perms \
+            target/site/apidocs/ \
+            "rc-release-deploy@${DEPLOY_HOST}:/var/www/routeconverter.com/static/javadoc/"

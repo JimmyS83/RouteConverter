@@ -64,18 +64,6 @@ public class Kml21Format extends KmlFormat {
         extractTracks(kmlType, context);
     }
 
-    @SuppressWarnings({"UnusedDeclaration", "unchecked"})
-    private <T> List<JAXBElement<T>> find(List<JAXBElement<? extends FeatureType>> elements, String name, Class<T> resultClass) {
-        List<JAXBElement<T>> result = new ArrayList<>();
-        if (elements != null) {
-            for (JAXBElement<? extends FeatureType> element : elements) {
-                if (name.equals(element.getName().getLocalPart()))
-                    result.add((JAXBElement<T>) element);
-            }
-        }
-        return result;
-    }
-
     private void extractTracks(KmlType kmlType, ParserContext<KmlRoute> context) throws IOException {
         FeatureType feature = kmlType.getFeature().getValue();
         if (feature instanceof ContainerType containerType) {
@@ -107,18 +95,12 @@ public class Kml21Format extends KmlFormat {
         extractWayPointsAndTracksFromNetworkLinks(networkLinks, context);
 
         List<JAXBElement<FolderType>> folders = find(features, "Folder", FolderType.class);
-        for (JAXBElement<FolderType> folder : folders) {
-            FolderType folderTypeValue = folder.getValue();
-            String folderName = concatPath(name, folderTypeValue.getName());
-            extractTracks(folderName, description, folderTypeValue.getFeature(), context);
-        }
+        extractTracksFromContainers(folders, f -> concatPath(name, f.getName()),
+                (containerName, f) -> extractTracks(containerName, description, f.getFeature(), context));
 
         List<JAXBElement<DocumentType>> documents = find(features, "Document", DocumentType.class);
-        for (JAXBElement<DocumentType> document : documents) {
-            DocumentType documentTypeValue = document.getValue();
-            String documentName = concatPath(name, documentTypeValue.getName());
-            extractTracks(documentName, description, documentTypeValue.getFeature(), context);
-        }
+        extractTracksFromContainers(documents, d -> concatPath(name, d.getName()),
+                (containerName, d) -> extractTracks(containerName, description, d.getFeature(), context));
     }
 
     private void extractWayPointsAndTracksFromPlacemarks(String name, String description, List<JAXBElement<PlacemarkType>> placemarkTypes, ParserContext<KmlRoute> context) {
@@ -127,25 +109,13 @@ public class Kml21Format extends KmlFormat {
             PlacemarkType placemarkTypeValue = placemarkType.getValue();
             String placemarkName = asDescription(trim(placemarkTypeValue.getName()),
                     trim(placemarkTypeValue.getDescription()));
-
+            if (placemarkTypeValue.getGeometry() == null)
+                continue;   // skip geometry-less placemarks (consistent with Kml22Format)
             List<KmlPosition> positions = extractPositions(placemarkTypeValue.getGeometry());
-            if (positions.size() == 1) {
-                // all placemarks with one position form one waypoint route
-                KmlPosition wayPoint = positions.get(0);
-                enrichPosition(wayPoint, extractTime(placemarkTypeValue.getTimePrimitive()), placemarkName, placemarkTypeValue.getDescription(), context.getStartDate());
-                waypoints.add(wayPoint);
-            } else {
-                // each placemark with more than one position is one track
-                String routeName = concatPath(name, asName(placemarkName));
-                List<String> routeDescription = asDescription(placemarkTypeValue.getDescription() != null ? placemarkTypeValue.getDescription() : description);
-                RouteCharacteristics characteristics = parseCharacteristics(routeName, placemarkTypeValue.getStyleUrl(), Track);
-                context.appendRoute(new KmlRoute(this, characteristics, routeName, routeDescription, positions));
-            }
+            appendPlacemarkAsWaypointOrTrack(name, description, placemarkName, true, placemarkTypeValue.getDescription(),
+                    placemarkTypeValue.getStyleUrl(), extractTime(placemarkTypeValue.getTimePrimitive()), positions, waypoints, context);
         }
-        if (!waypoints.isEmpty()) {
-            RouteCharacteristics characteristics = parseCharacteristics(name, null, Waypoints);
-            context.prependRoute(new KmlRoute(this, characteristics, name, asDescription(description), waypoints));
-        }
+        prependWaypointsRoute(name, description, waypoints, context);
     }
 
     private void extractWayPointsAndTracksFromNetworkLinks(List<JAXBElement<NetworkLinkType>> networkLinkTypes, ParserContext<KmlRoute> context) throws IOException {
@@ -158,24 +128,11 @@ public class Kml21Format extends KmlFormat {
         }
     }
 
+    @SuppressWarnings("unchecked")
     private List<KmlPosition> extractPositions(JAXBElement<? extends GeometryType> geometryType) {
-        List<KmlPosition> positions = new ArrayList<>();
-        if (geometryType != null) {
-            GeometryType geometryTypeValue = geometryType.getValue();
-            if (geometryTypeValue instanceof PointType point) {
-                positions.addAll(asKmlPositions(point.getCoordinates()));
-            }
-            if (geometryTypeValue instanceof LineStringType lineString) {
-                positions.addAll(asKmlPositions(lineString.getCoordinates()));
-            }
-            if (geometryTypeValue instanceof MultiGeometryType multiGeometryType) {
-                List<JAXBElement<? extends GeometryType>> geometryTypes = multiGeometryType.getGeometry();
-                for (JAXBElement<? extends GeometryType> geometryType2 : geometryTypes) {
-                    positions.addAll(extractPositions(geometryType2));
-                }
-            }
-        }
-        return positions;
+        return extractPositionsByElementName(geometryType,
+                value -> ((MultiGeometryType) value).getGeometry(),
+                child -> extractPositions((JAXBElement<? extends GeometryType>) child));
     }
 
     private CompactCalendar extractTime(JAXBElement<? extends TimePrimitiveType> timePrimitiveType) {
@@ -245,12 +202,7 @@ public class Kml21Format extends KmlFormat {
         placemarkType.setStyleUrl("#" + TRACK_LINE_STYLE);
         LineStringType lineStringType = objectFactory.createLineStringType();
         placemarkType.setGeometry(objectFactory.createLineString(lineStringType));
-        List<String> coordinates = lineStringType.getCoordinates();
-        List<KmlPosition> positions = route.getPositions();
-        for (int i = startIndex; i < endIndex; i++) {
-            KmlPosition position = positions.get(i);
-            coordinates.add(createCoordinates(position, false));
-        }
+        lineStringType.getCoordinates().addAll(createLineStringCoordinates(route, startIndex, endIndex));
         return placemarkType;
     }
 

@@ -1,0 +1,200 @@
+name: Build Mac JRE
+
+# Build the stripped Mac JRE (jlink + trim) for both architectures, publish to
+# https://static.routeconverter.com/build/mac/jre-<version>-<arch>-stripped.zip
+# alongside a .sha256 sidecar.
+#
+# RouteConverterMacOpenSource and TimeAlbumProMac assemblies consume these via
+# _build-linux-mac.yml — curl + sha256 verify + unzip into
+# target/Runtime-<arch>, then maven-assembly-plugin produces per-arch app zips.
+#
+# Single macos-latest (arm64) runner cross-jlinks both arches: jlink is
+# cross-platform — it bundles the jmods' native binaries into the output
+# Runtime regardless of the host arch. setup-java is called twice with
+# architecture: aarch64 + x64, populating JAVA_HOME_17_ARM64 + JAVA_HOME_17_X64.
+# Avoids macos-13 (Intel) runner queue (10–60 min waits, deprecated).
+#
+# Triggers:
+#   workflow_dispatch — manual rebuild
+#   push paths — automatic when the jlink recipe changes
+#
+# Plan: rc-meta specs/00018-release-automation-3.4.md Phase 5.4e.
+
+on:
+  workflow_dispatch:
+    inputs:
+      jdk_version:
+        description: 'Override Temurin JDK version (blank = read jre.version from pom.xml)'
+        required: false
+        default: ''
+  push:
+    branches: [master]
+    paths:
+      - 'pom.xml'
+      - 'scripts/jre-modules.txt'
+      - '.github/workflows/build-mac-jre.yml'
+
+concurrency:
+  group: build-mac-jre
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Resolve JDK version
+        id: jdk
+        shell: bash
+        run: |
+          if [[ -n "${{ inputs.jdk_version }}" ]]; then
+            ver="${{ inputs.jdk_version }}"
+          else
+            ver=$(sed -nE 's|.*<jre\.version>([^<]+)</jre\.version>.*|\1|p' \
+                  pom.xml | head -1)
+          fi
+          [[ -n "$ver" ]] || { echo "::error::failed to resolve JDK version"; exit 1; }
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          echo "JDK version: $ver"
+
+      - name: Install Temurin JDK (aarch64)
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ steps.jdk.outputs.version }}
+          architecture: aarch64
+      - name: Capture aarch64 JAVA_HOME
+        id: jdk-aarch64
+        shell: bash
+        run: |
+          [[ -d "$JAVA_HOME/jmods" ]] || { echo "::error::aarch64 jmods missing at $JAVA_HOME"; exit 1; }
+          echo "home=$JAVA_HOME" >> "$GITHUB_OUTPUT"
+          echo "aarch64 JAVA_HOME: $JAVA_HOME"
+
+      - name: Install Temurin JDK (x64)
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ steps.jdk.outputs.version }}
+          architecture: x64
+      - name: Capture x64 JAVA_HOME
+        id: jdk-x64
+        shell: bash
+        run: |
+          [[ -d "$JAVA_HOME/jmods" ]] || { echo "::error::x64 jmods missing at $JAVA_HOME"; exit 1; }
+          echo "home=$JAVA_HOME" >> "$GITHUB_OUTPUT"
+          echo "x64 JAVA_HOME: $JAVA_HOME"
+
+      - name: Resolve module list
+        id: modules
+        shell: bash
+        run: |
+          # single source of truth shared with build-windows-jre.yml and
+          # scripts/verify-runtime.sh -- one module per line, '#'/blank ignored
+          list=$(grep -vE '^[[:space:]]*#|^[[:space:]]*$' scripts/jre-modules.txt | tr -d '[:blank:]' | paste -sd, -)
+          [[ -n "$list" ]] || { echo "::error::empty module list from scripts/jre-modules.txt"; exit 1; }
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+          echo "modules: $list"
+
+      - name: jlink stripped JREs (both arches)
+        shell: bash
+        env:
+          VER:           ${{ steps.jdk.outputs.version }}
+          AARCH64_HOME:  ${{ steps.jdk-aarch64.outputs.home }}
+          X64_HOME:      ${{ steps.jdk-x64.outputs.home }}
+          MODULES:       ${{ steps.modules.outputs.list }}
+        run: |
+          set -euo pipefail
+
+          # Host jlink = arm64 native (the runner's arch). Cross-target by
+          # pointing --module-path at the target arch's jmods. The output
+          # Runtime contains target-arch binaries verbatim from those jmods.
+          HOST_JLINK="$AARCH64_HOME/bin/jlink"
+
+          for arch in aarch64 x64; do
+            case "$arch" in
+              aarch64) jmods_home="$AARCH64_HOME" ;;
+              x64)     jmods_home="$X64_HOME"    ;;
+            esac
+            echo "--- jlink $arch from $jmods_home ---"
+
+            OUT="jre-${VER}-${arch}"
+            rm -rf "$OUT"
+            "$HOST_JLINK" \
+              --module-path "$jmods_home/jmods" \
+              --add-modules "$MODULES" \
+              --output "$OUT" \
+              --strip-debug --compress 2 --no-header-files --no-man-pages
+            rm -rf "$OUT/legal"
+            rm -f  "$OUT/release"
+            rm -f  "$OUT/bin/keytool"
+            rm -f  "$OUT/conf/security/policy/README.txt"
+            rm -f  "$OUT/lib/server/Xusage.txt"
+          done
+
+      - name: Show full JRE trees
+        shell: bash
+        env:
+          VER: ${{ steps.jdk.outputs.version }}
+        run: |
+          for arch in aarch64 x64; do
+            OUT="jre-${VER}-${arch}"
+            echo "=== $OUT ==="
+            find "$OUT" -print
+            echo "--- summary ---"
+            echo "files: $(find "$OUT" -type f | wc -l)"
+            echo "dirs:  $(find "$OUT" -type d | wc -l)"
+            echo "bytes: $(du -sk "$OUT" | awk '{print $1*1024}')"
+          done
+
+      - name: Zip + sha256 (both arches)
+        shell: bash
+        env:
+          VER: ${{ steps.jdk.outputs.version }}
+        run: |
+          set -euo pipefail
+          for arch in aarch64 x64; do
+            base="jre-${VER}-${arch}-stripped"
+            (cd "jre-${VER}-${arch}" && zip -9 -r "../${base}.zip" . >/dev/null)
+            shasum -a 256 "${base}.zip" | awk -v f="${base}.zip" '{print $1"  "f}' > "${base}.zip.sha256"
+            ls -la "${base}.zip" "${base}.zip.sha256"
+            cat "${base}.zip.sha256"
+          done
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: stripped-jre
+          path: |
+            jre-${{ steps.jdk.outputs.version }}-aarch64-stripped.zip
+            jre-${{ steps.jdk.outputs.version }}-aarch64-stripped.zip.sha256
+            jre-${{ steps.jdk.outputs.version }}-x64-stripped.zip
+            jre-${{ steps.jdk.outputs.version }}-x64-stripped.zip.sha256
+          retention-days: 30
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: stripped-jre
+          path: artefacts/
+      - name: Inspect artefacts
+        run: ls -la artefacts/
+      - name: Configure SSH
+        env:
+          DEPLOY_KEY:  ${{ secrets.RC_RELEASE_DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.RC_RELEASE_DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+      - name: Rsync to static.routeconverter.com/build/mac/
+        env:
+          DEPLOY_HOST: ${{ secrets.RC_RELEASE_DEPLOY_HOST }}
+        run: |
+          rsync -av --omit-dir-times --no-perms \
+            artefacts/ \
+            "rc-release-deploy@${DEPLOY_HOST}:/var/www/routeconverter.com/static/build/mac/"

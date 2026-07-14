@@ -23,6 +23,7 @@ import slash.navigation.datasources.*;
 import slash.navigation.datasources.binding.DatasourceType;
 import slash.navigation.datasources.binding.FileType;
 import slash.navigation.datasources.binding.MapType;
+import slash.navigation.datasources.binding.SourceType;
 import slash.navigation.datasources.binding.ThemeType;
 import slash.navigation.download.Checksum;
 
@@ -89,6 +90,11 @@ public class DataSourceImpl implements DataSource {
         return datasourceType.getAction().value();
     }
 
+    public Source getSource() {
+        SourceType sourceType = datasourceType.getSource();
+        return sourceType != null ? new SourceImpl(sourceType) : null;
+    }
+
     public List<File> getFiles() {
         List<File> result = new ArrayList<>();
         for (FileType fileType : datasourceType.getFile())
@@ -122,21 +128,19 @@ public class DataSourceImpl implements DataSource {
 
     public Downloadable getDownloadableBySHA1(String sha1) {
         initialize();
-        for(Downloadable downloadable : downloadableMap.values()) {
-            Checksum checksum = downloadable.getLatestChecksum();
-            if(checksum != null && sha1.equals(checksum.getSHA1()))
-                return downloadable;
-        }
+        for(Downloadable downloadable : downloadableMap.values())
+            for(Checksum checksum : downloadable.getChecksums())
+                if(checksum != null && sha1.equals(checksum.getSHA1()))
+                    return downloadable;
         return null;
     }
 
     public Fragment<Downloadable> getFragmentBySHA1(String sha1) {
         initialize();
-        for(Fragment<Downloadable> fragment : fragmentMap.values()) {
-            Checksum checksum = fragment.getLatestChecksum();
-            if(checksum != null && sha1.equals(checksum.getSHA1()))
-                return fragment;
-        }
+        for(Fragment<Downloadable> fragment : fragmentMap.values())
+            for(Checksum checksum : fragment.getChecksums())
+                if(checksum != null && sha1.equals(checksum.getSHA1()))
+                    return fragment;
         return null;
     }
 

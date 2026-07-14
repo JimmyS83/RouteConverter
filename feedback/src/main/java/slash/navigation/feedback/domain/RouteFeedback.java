@@ -128,6 +128,7 @@ public class RouteFeedback {
         Post request = new Post(errorReportUrl, credentials);
         request.addString("log", logOutput);
         request.addString("description", description);
+        request.addString("locale", getDefault().toString());
         if (file != null)
             request.addFile("file", file);
 
@@ -141,25 +142,29 @@ public class RouteFeedback {
     }
 
     public String getUpdateCheckUrl(String version, long startTime) {
-        if(version.equals("?"))
-            version = "unknown";
-        return apiUrl + UPDATE_CHECK_URI + getDefault().getLanguage() + "/" + version + "/" + startTime + "/";
+        // Offer the latest release directory (lets the user pick OS/architecture).
+        // The version/startTime are no longer encoded into the URL; the host always serves the
+        // latest stable build from releases.routeconverter.com.
+        return "https://releases.routeconverter.com/latest/";
     }
 
     public String checkForUpdate(String routeConverterVersion, String routeConverterBits, long startCount,
-                                 String javaVersion, String javaBits, String javaFxVersion,
+                                 String javaVersion, String javaBits,
                                  String osName, String osVersion, String osArch,
+                                 String javaMaxMemory, String osTotalMemory, String screenResolution,
                                  long startTime) throws IOException {
         log.fine("Checking for update for version " + routeConverterVersion);
         Post request = new Post(apiUrl + UPDATE_CHECK_URI, credentials);
         request.addString("id", valueOf(startTime));
         request.addString("javaBits", javaBits);
         request.addString("javaVersion", javaVersion);
-        request.addString("javaFxVersion", javaFxVersion);
-        request.addString("locale", getDefault().getLanguage());
+        request.addString("javaMaxMemory", javaMaxMemory);
+        request.addString("locale", getDefault().toString());
         request.addString("osArch", osArch);
         request.addString("osName", osName);
+        request.addString("osTotalMemory", osTotalMemory);
         request.addString("osVersion", osVersion);
+        request.addString("screenResolution", screenResolution);
         request.addString("rcStartCount", Long.toString(startCount));
         request.addString("rcVersion", routeConverterVersion);
         request.addString("rcBits", routeConverterBits);

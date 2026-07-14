@@ -21,13 +21,15 @@
 package slash.navigation.photon;
 
 import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.geojson.*;
 import slash.navigation.common.NavigationPosition;
-import slash.navigation.common.SimpleNavigationPosition;
 import slash.navigation.geocoding.BaseGeocodingService;
+import slash.navigation.geocoding.CategorizedNavigationPosition;
 import slash.navigation.geocoding.GeocodingResult;
+import slash.navigation.geocoding.SimpleCategorizedNavigationPosition;
 import slash.navigation.rest.Get;
 
 import java.io.IOException;
@@ -77,7 +79,7 @@ public class PhotonService extends BaseGeocodingService {
         String result = execute(uri);
         if (result != null) {
             try {
-                return new ObjectMapper().readValue(result, FeatureCollection.class);
+                return asFeatureCollection(new ObjectMapper().readTree(result));
             } catch (JsonParseException | JsonMappingException e) {
                 throw new IOException("Cannot unmarshall " + result + ": " + e, e);
             }
@@ -85,19 +87,108 @@ public class PhotonService extends BaseGeocodingService {
         return null;
     }
 
-    private List<NavigationPosition> extractPositions(List<Feature> features) {
-        List<NavigationPosition> result = new ArrayList<>(features.size());
-        for (Feature feature : features) {
-            GeoJsonObject geometry = feature.getGeometry();
-            if (!(geometry instanceof Point point))
-                continue;
+    FeatureCollection asFeatureCollection(JsonNode root) {
+        if (root == null || !"FeatureCollection".equals(root.path("type").asText()))
+            return null;
 
-            LngLatAlt lngLatAlt = point.getCoordinates();
-            String type = feature.getProperty("osm_key");
-            result.add(new SimpleNavigationPosition(lngLatAlt.getLongitude(), lngLatAlt.getLatitude(), null,
-                    getDisplayName(feature) + " (" + type + ")"));
+        FeatureCollection result = new FeatureCollection();
+        JsonNode features = root.path("features");
+        if (!features.isArray())
+            return result;
+
+        for (JsonNode featureNode : features) {
+            Feature feature = asFeature(featureNode);
+            if (feature != null)
+                result.add(feature);
         }
         return result;
+    }
+
+    private Feature asFeature(JsonNode featureNode) {
+        if (!featureNode.isObject())
+            return null;
+
+        Feature feature = new Feature();
+        GeoJsonObject geometry = asPoint(featureNode.path("geometry"));
+        if (geometry != null)
+            feature.setGeometry(geometry);
+
+        JsonNode properties = featureNode.path("properties");
+        if (properties.isObject()) {
+            properties.properties().forEach(entry -> feature.setProperty(entry.getKey(), asProperty(entry.getValue())));
+        }
+        return feature;
+    }
+
+    private GeoJsonObject asPoint(JsonNode geometryNode) {
+        if (!geometryNode.isObject() || !"Point".equals(geometryNode.path("type").asText()))
+            return null;
+
+        JsonNode coordinates = geometryNode.path("coordinates");
+        if (!coordinates.isArray() || coordinates.size() < 2 ||
+                !coordinates.get(0).isNumber() || !coordinates.get(1).isNumber())
+            return null;
+
+        LngLatAlt lngLatAlt = new LngLatAlt();
+        lngLatAlt.setLongitude(coordinates.get(0).doubleValue());
+        lngLatAlt.setLatitude(coordinates.get(1).doubleValue());
+        if (coordinates.size() > 2 && coordinates.get(2).isNumber())
+            lngLatAlt.setAltitude(coordinates.get(2).doubleValue());
+
+        Point point = new Point();
+        point.setCoordinates(lngLatAlt);
+        return point;
+    }
+
+    private Object asProperty(JsonNode value) {
+        if (value == null || value.isNull())
+            return null;
+        if (value.isTextual())
+            return value.asText();
+        if (value.isIntegralNumber())
+            return value.asLong();
+        if (value.isFloatingPointNumber())
+            return value.asDouble();
+        if (value.isBoolean())
+            return value.asBoolean();
+        if (value.isArray()) {
+            List<Object> result = new ArrayList<>();
+            for (JsonNode node : value) {
+                result.add(asProperty(node));
+            }
+            return result;
+        }
+        if (value.isObject()) {
+            java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
+            value.properties().forEach(entry -> result.put(entry.getKey(), asProperty(entry.getValue())));
+            return result;
+        }
+        return value.asText();
+    }
+
+    private List<CategorizedNavigationPosition> extractPositions(List<Feature> features) {
+        List<CategorizedNavigationPosition> result = new ArrayList<>(features.size());
+        for (Feature feature : features) {
+            CategorizedNavigationPosition position = extractPosition(feature);
+            if (position != null)
+                result.add(position);
+        }
+        return result;
+    }
+
+    CategorizedNavigationPosition extractPosition(Feature feature) {
+        GeoJsonObject geometry = feature.getGeometry();
+        if (!(geometry instanceof Point point))
+            return null;
+
+        LngLatAlt lngLatAlt = point.getCoordinates();
+        String type = getProperty(feature, "type");
+        if(type.isEmpty())
+            type = getProperty(feature, "osm_value");
+        if(type.isEmpty())
+            type = getProperty(feature, "osm_key");
+        return new SimpleCategorizedNavigationPosition(lngLatAlt.getLongitude(), lngLatAlt.getLatitude(), null,
+                getDisplayName(feature), type.isEmpty() ? null : type);
     }
 
     public List<GeocodingResult> getPositionsFor(String address) throws IOException {

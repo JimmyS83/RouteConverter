@@ -1,0 +1,178 @@
+name: Release prepare
+
+# Manually-triggered workflow that replaces the maintainer's local
+# `mvn release:prepare` + `git push --follow-tags` ritual.
+#
+# What it does:
+#   1. Validate inputs (regex on release_version + development_version).
+#   2. mvn release:prepare → tags the release + bumps master to the next
+#      development version + auto-pushes both commits and the tag.
+#      Push uses RC_RELEASE_PUSH_TOKEN (a fine-grained PAT), NOT the
+#      workflow-issued GITHUB_TOKEN — the latter does not trigger
+#      downstream workflows, so the tag push would leave release.yml
+#      silently un-fired.
+#   3. cuts and pushes a <version>-maintenance branch.
+#   4. Clones rc-site via Gitea PAT, bumps catalog XMLs, commits, pushes.
+#      (Previously fired a Gitea repository_dispatch into a separate
+#      rc-site/.gitea/workflows/catalog-bump.yml — collapsed into this
+#      workflow per Phase 5.8 plan-review O2 on 2026-06-07.)
+#
+# Tag push from step 2 fires release.yml automatically.
+#
+# See rc-meta/specs/00018-release-automation-3.4.md Phase 4 automation
+# and rc-meta/specs/OPEN-TASKS.md MR-§9 for the one-time
+# secret-provisioning steps.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Release version, plain (e.g. 3.5). No `v` prefix.'
+        required: true
+      development_version:
+        description: 'Next development version (e.g. 3.6-SNAPSHOT). Must end -SNAPSHOT.'
+        required: true
+      dry_run:
+        description: 'Dry-run only (no commits, no tag, no push, no catalog bump)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+# Two rapid invocations would otherwise collide on a pom that has
+# already advanced to the next-dev version. Queue them; never cancel.
+concurrency:
+  group: release-prepare
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate inputs
+        run: |
+          rv='${{ inputs.release_version }}'
+          dv='${{ inputs.development_version }}'
+          [[ "$rv" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || {
+            echo "::error::release_version must be MAJOR.MINOR[.PATCH], no v prefix. Got: $rv"
+            exit 1
+          }
+          [[ "$dv" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?-SNAPSHOT$ ]] || {
+            echo "::error::development_version must end in -SNAPSHOT. Got: $dv"
+            exit 1
+          }
+          echo "ok: release=$rv  development=$dv"
+
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0      # release-plugin needs full history + tags
+          # RC_RELEASE_PUSH_TOKEN: fine-grained PAT scoped
+          # `contents:write` on cpesch/RouteConverter only. Required
+          # because pushes made under GITHUB_TOKEN do NOT trigger
+          # downstream workflows — release.yml would silently skip
+          # the tag push.
+          token: ${{ secrets.RC_RELEASE_PUSH_TOKEN }}
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: '21'
+
+      - uses: actions/cache@v5
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2
+
+      - name: git identity (commits authored by the workflow bot)
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      - name: rewrite SSH github URLs to HTTPS
+        # pom <developerConnection> is scm:git:git@github.com:... (SSH).
+        # release-plugin pushes via developerConnection, but the runner
+        # has no SSH key — only the token-backed HTTPS extraheader from
+        # actions/checkout. Rewrite SSH→HTTPS so the push reuses that
+        # token. Without this the push dies: "git@github.com: Permission
+        # denied (publickey)". pom stays SSH for the maintainer's local
+        # release:prepare fallback.
+        run: git config url.'https://github.com/'.insteadOf 'git@github.com:'
+
+      - name: mvn release:prepare
+        # -Darguments passes flags to the forked Maven invocation that
+        # release:prepare spawns for `clean verify`. Skip jacoco's
+        # coverage check (separate concern from cutting a release) and
+        # the slow integration tests (release workflow doesn't gate on
+        # them — `build.yml` already runs the full matrix on every push).
+        run: |
+          DRY=""
+          if [[ '${{ inputs.dry_run }}' == 'true' ]]; then DRY='-DdryRun=true'; fi
+          ./mvnw --batch-mode release:prepare $DRY \
+            -DautoVersionSubmodules=true \
+            -Dresume=false \
+            -DreleaseVersion='${{ inputs.release_version }}' \
+            -DdevelopmentVersion='${{ inputs.development_version }}' \
+            -Dtag='${{ inputs.release_version }}' \
+            -Darguments='-Djacoco.skip=true -DskipITs'
+
+      - name: cut <version>-maintenance branch
+        if: inputs.dry_run != true
+        run: |
+          BR='${{ inputs.release_version }}-maintenance'
+          git checkout -b "$BR" '${{ inputs.release_version }}'
+          git push -u origin "$BR"
+
+      - name: clean up release-plugin leftovers
+        if: always()
+        run: |
+          find . -name '*.releaseBackup' -delete
+          rm -f release.properties
+
+      - name: Bump catalog XMLs on rc-site
+        if: inputs.dry_run != true
+        env:
+          GITEA_TOKEN: ${{ secrets.RC_SITE_DISPATCH_TOKEN }}
+          GITEA_HOST:  ${{ secrets.RC_SITE_GITEA_HOST }}
+          VERSION:     ${{ inputs.release_version }}
+        run: |
+          set -euo pipefail
+          cd "$(mktemp -d)"
+          git clone --depth 1 \
+            "https://x-access-token:${GITEA_TOKEN}@${GITEA_HOST}/rc/rc-site.git" .
+          git config user.name  'github-actions[bot]'
+          git config user.email 'release-prepare@routeconverter.com'
+          today_year=$(date +%Y)
+          today_month=$(date +%m)
+          today_day=$(date +%d)
+          for f in static/downloads/RouteConverter.xml static/downloads/RouteConverter_de.xml; do
+            sed -i -E \
+              -e "s|<Program_Version>[^<]+</Program_Version>|<Program_Version>${VERSION}</Program_Version>|" \
+              -e "s|<Program_Release_Year>[^<]+</Program_Release_Year>|<Program_Release_Year>${today_year}</Program_Release_Year>|" \
+              -e "s|<Program_Release_Month>[^<]+</Program_Release_Month>|<Program_Release_Month>${today_month}</Program_Release_Month>|" \
+              -e "s|<Program_Release_Day>[^<]+</Program_Release_Day>|<Program_Release_Day>${today_day}</Program_Release_Day>|" \
+              "$f"
+          done
+          if git diff --quiet; then
+            echo "rc-site catalog XMLs already at ${VERSION} — no bump needed"
+            exit 0
+          fi
+          git add static/downloads/RouteConverter.xml static/downloads/RouteConverter_de.xml
+          git commit -m "downloads: bump catalog XMLs to ${VERSION} ($(date -I))"
+          # The Gitea host (strato) intermittently hits a PID/TasksMax cap;
+          # its pre-receive hook then dies with
+          #   runtime/cgo: pthread_create failed: Resource temporarily unavailable
+          # → SIGABRT → "pre-receive hook declined". That's transient host
+          # exhaustion, not a bad push — retry with backoff before failing
+          # the release. See rc-meta/specs/00025 + diag-tasksmax.sh.
+          for attempt in 1 2 3 4 5; do
+            if git push origin main; then
+              echo "catalog push ok (attempt ${attempt})"
+              exit 0
+            fi
+            echo "::warning::catalog push failed (attempt ${attempt}/5) — strato may be PID-capped; retrying"
+            sleep $(( attempt * 15 ))
+          done
+          echo "::error::catalog push still failing after 5 attempts — check strato PID/TasksMax cap (rc-meta/specs/00025)"
+          exit 1

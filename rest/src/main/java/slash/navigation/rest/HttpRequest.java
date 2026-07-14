@@ -58,7 +58,6 @@ import static slash.common.helpers.ExceptionHelper.getLocalizedMessage;
 
 public abstract class HttpRequest {
     public static final String APPLICATION_JSON = "application/json";
-    public static final String USER_AGENT = "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36";
 
     private final Logger log;
     private final HttpClientBuilder clientBuilder = HttpClientBuilder.create();
@@ -95,6 +94,10 @@ public abstract class HttpRequest {
 
     public void setUserAgent(String userAgent) {
         clientBuilder.setUserAgent(userAgent);
+    }
+
+    public void setResponseTimeoutSeconds(int seconds) {
+        requestConfigBuilder.setResponseTimeout(seconds, SECONDS);
     }
 
     protected void setHeader(String name, String value) {

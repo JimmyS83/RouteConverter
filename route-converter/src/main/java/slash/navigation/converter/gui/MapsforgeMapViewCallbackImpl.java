@@ -1,0 +1,78 @@
+/*
+    This file is part of BaseRouteConverter.
+
+    BaseRouteConverter is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+
+    BaseRouteConverter is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with BaseRouteConverter; if not, write to the Free Software
+    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+
+    Copyright (C) 2007 Christian Pesch. All Rights Reserved.
+*/
+package slash.navigation.converter.gui;
+
+import slash.navigation.converter.gui.helpers.MapViewCallbackImpl;
+import slash.navigation.elevation.ElevationService;
+import slash.navigation.gui.Application;
+import slash.navigation.gui.models.BooleanModel;
+import slash.navigation.maps.mapsforge.MapsforgeMapManager;
+import slash.navigation.mapview.mapsforge.MapsforgeMapViewCallback;
+
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.util.ResourceBundle;
+import java.util.logging.Logger;
+
+import static java.text.MessageFormat.format;
+import static slash.common.helpers.ExceptionHelper.getLocalizedMessage;
+import static slash.navigation.gui.helpers.WindowHelper.getFrame;
+import static slash.navigation.gui.helpers.WindowHelper.handleOutOfMemoryError;
+import static slash.navigation.gui.helpers.WindowHelper.showError;
+
+/**
+ * Implements the callbacks from the MapsforgeMapView to the RouteConverter services.
+ *
+ * @author Christian Pesch
+ */
+
+public class MapsforgeMapViewCallbackImpl extends MapViewCallbackImpl implements MapsforgeMapViewCallback {
+    private static final Logger log = Logger.getLogger(MapsforgeMapViewCallbackImpl.class.getName());
+
+    public MapsforgeMapManager getMapsforgeMapManager() {
+        return ((RouteConverter) Application.getInstance()).getMapsforgeMapManager();
+    }
+
+    public ElevationService getElevationService() {
+        return ((BaseRouteConverter) Application.getInstance()).getElevationServiceFacade().getElevationService();
+    }
+
+    private ResourceBundle getBundle() {
+        return Application.getInstance().getContext().getBundle();
+    }
+
+    public void handleRoutingException(Throwable t) {
+        if (t instanceof OutOfMemoryError)
+            handleOutOfMemoryError((OutOfMemoryError) t);
+        else {
+            StringWriter writer = new StringWriter();
+            t.printStackTrace(new PrintWriter(writer));
+            log.severe("Cannot route position list: " + getLocalizedMessage(t) + ", " + writer);
+            showError(getFrame(), format(getBundle().getString("cannot-route-position-list"), t),
+                    getFrame().getTitle());
+        }
+    }
+
+    public void showMapException(String mapName, Exception e) {
+        log.severe("Cannot display map " + mapName + ": " + getLocalizedMessage(e));
+        showError(getFrame(), format(getBundle().getString("cannot-display-map"), mapName, e),
+                getFrame().getTitle());
+    }
+}

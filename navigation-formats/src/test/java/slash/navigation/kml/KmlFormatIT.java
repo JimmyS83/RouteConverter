@@ -22,10 +22,12 @@ package slash.navigation.kml;
 
 import junit.framework.TestCase;
 import org.junit.Test;
-import slash.navigation.kml.binding20.Kml;
 
-import jakarta.xml.bind.JAXBException;
-import java.io.*;
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
 
 import static org.junit.Assert.assertNotNull;
@@ -33,67 +35,29 @@ import static org.junit.Assert.assertTrue;
 import static slash.common.TestCase.assertEquals;
 import static slash.navigation.base.NavigationTestCase.*;
 import static slash.navigation.base.RouteCharacteristics.Track;
-import static slash.navigation.kml.KmlUtil.*;
 
 public class KmlFormatIT {
-    @Test
-    public void testReader() throws FileNotFoundException, JAXBException {
-        Reader reader = new FileReader(TEST_PATH + "from20.kml");
-        Kml kml = (Kml) newUnmarshaller20().unmarshal(reader);
-        assertNotNull(kml);
-        assertNotNull(kml.getFolder());
-        assertEquals(3, kml.getFolder().getDocumentOrFolderOrGroundOverlay().size());
-    }
 
-    @Test
-    public void testInputStream() throws FileNotFoundException, JAXBException {
-        InputStream in = new FileInputStream(TEST_PATH + "from20.kml");
-        Kml kml = (Kml) newUnmarshaller20().unmarshal(in);
-        assertNotNull(kml);
-        assertNotNull(kml.getFolder());
-        assertEquals(3, kml.getFolder().getDocumentOrFolderOrGroundOverlay().size());
-    }
+    private List<KmlRoute> readNetworkLinkedKmlFile(BaseKmlFormat format, String directFileName, String networkLinkFileName) throws Exception {
+        Path temporaryDirectory = Files.createTempDirectory("kml-network-link-");
+        temporaryDirectory.toFile().deleteOnExit();
 
-    @Test
-    public void testUnmarshal20() throws IOException {
-        Reader reader = new FileReader(TEST_PATH + "from20.kml");
-        Kml kml = unmarshal20(reader);
-        assertNotNull(kml);
-        assertNotNull(kml.getFolder());
-        assertEquals(3, kml.getFolder().getDocumentOrFolderOrGroundOverlay().size());
-    }
+        Path directSource = Path.of(TEST_PATH, directFileName);
+        Path directTarget = temporaryDirectory.resolve(directFileName);
+        Files.copy(directSource, directTarget, StandardCopyOption.REPLACE_EXISTING);
+        directTarget.toFile().deleteOnExit();
 
-    @Test(expected = IOException.class)
-    public void testUnmarshal20TypeError() throws Exception {
-        Reader reader = new FileReader(TEST_PATH + "from20.kml");
-        unmarshal21(reader);
-    }
+        String href = "file:///CWD/../rc-samples/trunk/test/" + directFileName;
+        String networkLink = Files.readString(Path.of(TEST_PATH, networkLinkFileName), StandardCharsets.UTF_8)
+                .replace(href, directTarget.toUri().toString());
+        Path networkLinkTarget = temporaryDirectory.resolve(networkLinkFileName);
+        Files.writeString(networkLinkTarget, networkLink, StandardCharsets.UTF_8);
+        networkLinkTarget.toFile().deleteOnExit();
 
-    @Test
-    public void testUnmarshal21() throws IOException {
-        Reader reader = new FileReader(TEST_PATH + "from21.kml");
-        slash.navigation.kml.binding21.KmlType kml = unmarshal21(reader);
-        assertNotNull(kml);
-    }
-
-    @Test(expected = IOException.class)
-    public void testUnmarshal21TypeError() throws Exception {
-        Reader reader = new FileReader(TEST_PATH + "from21.kml");
-        unmarshal20(reader);
-    }
-
-    @Test
-    public void testUnmarshal22Beta() throws IOException {
-        Reader reader = new FileReader(TEST_PATH + "from22beta.kml");
-        slash.navigation.kml.binding22beta.KmlType kml = unmarshal22Beta(reader);
-        assertNotNull(kml);
-    }
-
-    @Test
-    public void testUnmarshal22() throws IOException {
-        Reader reader = new FileReader(TEST_PATH + "from22.kml");
-        slash.navigation.kml.binding22.KmlType kml = unmarshal22(reader);
-        assertNotNull(kml);
+        List<KmlRoute> directRoute = readKmlFile(format, directTarget.toFile().getAbsolutePath());
+        List<KmlRoute> networkLinkRoute = readKmlFile(format, networkLinkTarget.toFile().getAbsolutePath());
+        assertRoutesEquals(directRoute, networkLinkRoute);
+        return networkLinkRoute;
     }
 
     private void assertRoutesEquals(List<KmlRoute> firstRoutes, List<KmlRoute> secondRoutes) {
@@ -151,23 +115,17 @@ public class KmlFormatIT {
 
     @Test
     public void testDirectVsNetworklink20() throws Exception {
-        List<KmlRoute> directRoute = readKmlFile(new Kml20Format(), TEST_PATH + "from20.kml");
-        List<KmlRoute> networkLinkRoute = readKmlFile(new Kml20Format(), TEST_PATH + "from20nwlink.kml");
-        assertRoutesEquals(directRoute, networkLinkRoute);
+        readNetworkLinkedKmlFile(new Kml20Format(), "from20.kml", "from20nwlink.kml");
     }
 
     @Test
     public void testDirectVsNetworklink21() throws Exception {
-        List<KmlRoute> directRoute = readKmlFile(new Kml21Format(), TEST_PATH + "from21.kml");
-        List<KmlRoute> networkLinkRoute = readKmlFile(new Kml21Format(), TEST_PATH + "from21nwlink.kml");
-        assertRoutesEquals(directRoute, networkLinkRoute);
+        readNetworkLinkedKmlFile(new Kml21Format(), "from21.kml", "from21nwlink.kml");
     }
 
     @Test
     public void testDirectVsNetworklink22() throws Exception {
-        List<KmlRoute> directRoute = readKmlFile(new Kml22Format(), TEST_PATH + "from22.kml");
-        List<KmlRoute> networkLinkRoute = readKmlFile(new Kml22Format(), TEST_PATH + "from22nwlink.kml");
-        assertRoutesEquals(directRoute, networkLinkRoute);
+        readNetworkLinkedKmlFile(new Kml22Format(), "from22.kml", "from22nwlink.kml");
     }
 
     @Test

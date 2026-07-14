@@ -23,6 +23,7 @@ package slash.navigation.routes.impl;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.TableModel;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -32,6 +33,12 @@ import java.util.List;
  */
 
 public class RoutesTableModel extends AbstractTableModel {
+    public static final int NAME_COLUMN = 0;
+    public static final int CREATOR_COLUMN = 1;
+    public static final int LENGTH_COLUMN = 2;
+    public static final int DURATION_COLUMN = 3;
+    public static final int COLUMN_COUNT = 4;
+
     private List<RouteModel> routes = new ArrayList<>();
 
     public void setRoutes(List<RouteModel> routes) {
@@ -46,8 +53,10 @@ public class RoutesTableModel extends AbstractTableModel {
     public int getColumnCount() {
     	/** No need to occupy display by column author
         return 2;
-        **/
+        
     	return 1;
+			**/
+      return COLUMN_COUNT;
     }
 
     public Object getValueAt(int rowIndex, int columnIndex) {
@@ -78,6 +87,25 @@ public class RoutesTableModel extends AbstractTableModel {
         if (index == -1)
             throw new IllegalArgumentException("Route " + route + " not found in " + routes);
         fireTableRowsUpdated(index, index);
+    }
+
+    /**
+     * Updates several routes with a single table event so that a {@link javax.swing.table.TableRowSorter}
+     * with {@code setSortsOnUpdates} re-sorts once for the whole batch instead of once per route.
+     * Routes that are no longer in the model are ignored.
+     */
+    public void updateRoutes(Collection<RouteModel> routesToUpdate) {
+        int min = Integer.MAX_VALUE;
+        int max = -1;
+        for (RouteModel route : routesToUpdate) {
+            int index = getIndex(route);
+            if (index == -1)
+                continue;
+            min = Math.min(min, index);
+            max = Math.max(max, index);
+        }
+        if (max >= 0)
+            fireTableRowsUpdated(min, max);
     }
 
     public void deleteRoute(RouteModel route) {

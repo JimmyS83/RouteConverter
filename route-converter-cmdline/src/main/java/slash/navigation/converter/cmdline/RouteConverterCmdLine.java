@@ -75,8 +75,13 @@ public class RouteConverterCmdLine {
         Version version = parseVersionFromManifest();
         log.info("Started RouteConverter " + version.getVersion() + " from " + version.getDate() +
                 " on " + getJava() + " and " + getPlatform() + " with " + getMaximumMemory() + " MByte heap");
+
+        if (args.length >= 1 && "analyze".equals(args[0]))
+            return analyze(args);
+
         if (args.length != 3) {
             log.info("Usage: java -jar RouteConverterCmdLine.jar <source file> <target format> <target file>");
+            log.info("       java -jar RouteConverterCmdLine.jar analyze <source file> [--brouter-segments <dir>]");
             logFormatNames(false);
             return 5;
         }
@@ -109,6 +114,66 @@ public class RouteConverterCmdLine {
         }
 
         return 0;
+    }
+
+    /**
+     * {@code analyze <source file> [--brouter-segments <dir>]} — writes one line
+     * of metadata JSON (see src/main/doc/analyze-json.md, specs/00055) to stdout.
+     * When {@code --brouter-segments <dir>} points at a directory of BRouter
+     * {@code .rd5} segments, Route-characteristic (planned) position lists inside
+     * coverage are routed on-road and reported as {@code routed}; without the
+     * option, or for lists outside coverage / that fail to route, they fall back
+     * to {@code straight-line} (see {@link BRouterRouteLengthComputer}). Tracks and
+     * waypoint lists are always measured point-to-point.
+     */
+    private int analyze(String[] args) {
+        if (args.length < 2) {
+            log.severe("Usage: java -jar RouteConverterCmdLine.jar analyze <source file> [--brouter-segments <dir>]");
+            return 5;
+        }
+
+        File source = absolutize(new File(args[1]));
+        if (!source.exists()) {
+            log.severe("Source '" + source.getAbsolutePath() + "' does not exist; stopping.");
+            return 10;
+        }
+
+        RouteLengthComputer lengthComputer = createLengthComputer(args);
+
+        try {
+            FileAnalyzer analyzer = new FileAnalyzer(registry, lengthComputer);
+            String json = analyzer.analyze(source);
+            System.out.println(json);
+            return 0;
+        } catch (Exception e) {
+            log.severe("Error while analyzing '" + source.getAbsolutePath() + "': " + e);
+            return 25;
+        }
+    }
+
+    /**
+     * Picks the BRouter-backed computer when {@code --brouter-segments <dir>}
+     * names an existing directory, otherwise the point-to-point default. A
+     * missing or non-existent directory is not fatal: everything is measured as
+     * straight-line/track so the analyze run still emits JSON.
+     */
+    static RouteLengthComputer createLengthComputer(String[] args) {
+        for (int i = 2; i < args.length; i++) {
+            if ("--brouter-segments".equals(args[i])) {
+                if (i == args.length - 1) {
+                    log.warning("--brouter-segments requires a directory argument; using straight-line lengths");
+                    break;
+                }
+                File segments = absolutize(new File(args[i + 1]));
+                if (segments.isDirectory()) {
+                    log.info("Using BRouter segments from " + segments.getAbsolutePath() + " for routed lengths");
+                    return new BRouterRouteLengthComputer(segments);
+                }
+                log.warning("BRouter segments directory '" + segments.getAbsolutePath() + "' does not exist; using straight-line lengths");
+                break;
+            }
+        }
+        return new PointToPointLengthComputer();
     }
 
     private void convert(File source, NavigationFormat format, File target) throws IOException {

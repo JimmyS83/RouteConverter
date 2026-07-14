@@ -121,3 +121,4 @@ public class GpxExtensionsIT {
         assertTrue(after.contains("<gpxx:Temperature>19.8</gpxx:Temperature>"));
     }
 }
+

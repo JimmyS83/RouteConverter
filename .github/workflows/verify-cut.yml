@@ -1,0 +1,133 @@
+name: Verify cut
+
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag from triggering release run
+        id: ctx
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG='${{ github.event.workflow_run.head_branch }}'
+          CONCLUSION='${{ github.event.workflow_run.conclusion }}'
+          echo "tag=$TAG"               >> "$GITHUB_OUTPUT"
+          echo "conclusion=$CONCLUSION" >> "$GITHUB_OUTPUT"
+          echo "release run tag=$TAG conclusion=$CONCLUSION"
+
+      - name: Sanity-check release.yml succeeded
+        if: steps.ctx.outputs.conclusion != 'success'
+        run: |
+          echo "::error::Release run conclusion=${{ steps.ctx.outputs.conclusion }} (not success). Stopping verify-cut."
+          exit 1
+
+      - name: Verify GH Release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG:      ${{ steps.ctx.outputs.tag }}
+          REPO:     ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          expected=(
+            RouteConverterCmdLine.jar
+            RouteConverterLinux.jar
+            RouteConverterMac-app.zip
+            RouteConverterWindows.exe
+            RouteConverterPortable.paf.exe
+            TimeAlbumProLinux.jar
+            TimeAlbumProMac-app.zip
+            TimeAlbumProWindows.exe
+          )
+          actual=$(gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name' | sort)
+          missing=()
+          for name in "${expected[@]}"; do
+            if ! grep -qxF "$name" <<< "$actual"; then
+              missing+=("$name")
+            fi
+          done
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::missing assets on GH Release $TAG:"
+            printf '  %s\n' "${missing[@]}"
+            exit 1
+          fi
+          echo "all 8 GH Release assets present"
+
+      - name: Verify releases.routeconverter.com assets serve
+        env:
+          TAG: ${{ steps.ctx.outputs.tag }}
+        run: |
+          set -euo pipefail
+          base=https://releases.routeconverter.com/latest
+          for f in RouteConverterCmdLine.jar RouteConverterLinux.jar \
+                   RouteConverterMac-app.zip \
+                   RouteConverterWindows.exe RouteConverterPortable.paf.exe \
+                   TimeAlbumProLinux.jar TimeAlbumProMac-app.zip \
+                   TimeAlbumProWindows.exe; do
+            code=$(curl -sI -o /dev/null -w '%{http_code}' "${base}/${f}")
+            if [[ "$code" != "200" ]]; then
+              echo "::error::${base}/${f} returned HTTP $code"
+              exit 1
+            fi
+          done
+          echo "all 8 latest/ URLs return 200"
+          arch_base=https://releases.routeconverter.com/previous-releases/${TAG}
+          code=$(curl -sI -o /dev/null -w '%{http_code}' "${arch_base}/RouteConverterCmdLine.jar")
+          [[ "$code" == "200" ]] || { echo "::error::previous-releases archive missing: $arch_base"; exit 1; }
+          echo "previous-releases/${TAG}/ archive present"
+
+      - name: Verify catalog XML reports new version
+        env:
+          TAG: ${{ steps.ctx.outputs.tag }}
+        run: |
+          set -euo pipefail
+          xml_ver=$(curl -sf https://static.routeconverter.com/downloads/RouteConverter.xml \
+                    | sed -nE 's|.*<Program_Version>([^<]+)</Program_Version>.*|\1|p' | head -1)
+          if [[ "$xml_ver" != "$TAG" ]]; then
+            echo "::warning::catalog XML reports Program_Version=$xml_ver, expected $TAG. (Prod may need: cd /var/www/routeconverter.com && git pull.)"
+          else
+            echo "catalog XML reports $TAG ok"
+          fi
+
+      - name: Verify Windows .exe PE FileVersion
+        env:
+          TAG: ${{ steps.ctx.outputs.tag }}
+        run: |
+          set -euo pipefail
+          pip install --quiet pefile
+          curl -sfLo /tmp/rcwin.exe \
+            https://releases.routeconverter.com/latest/RouteConverterWindows.exe
+          cat > /tmp/pe-version.py <<'PY'
+          import pefile, sys
+          pe = pefile.PE('/tmp/rcwin.exe')
+          for fi in pe.FileInfo[0]:
+              if fi.Key.decode() == 'StringFileInfo':
+                  for st in fi.StringTable:
+                      for k, v in st.entries.items():
+                          if k == b'FileVersion':
+                              print(v.decode())
+                              sys.exit(0)
+          sys.exit(1)
+          PY
+          got=$(python3 /tmp/pe-version.py)
+          if [[ "$got" == "$TAG "* ]]; then
+            echo "PE FileVersion: '$got' ok"
+          else
+            echo "::error::PE FileVersion '$got' does not start with '$TAG '"
+            exit 1
+          fi
+
+      - name: ntfy on failure
+        if: failure()
+        env:
+          TAG: ${{ steps.ctx.outputs.tag }}
+        run: |
+          curl -fsS -X POST -d "verify-cut FAILED for $TAG -- see GitHub Actions run ${{ github.run_id }}" \
+            https://ntfy.routeconverter.com/factory || true

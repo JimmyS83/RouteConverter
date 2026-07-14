@@ -20,8 +20,7 @@
 
 package slash.navigation.routes.local;
 
-import slash.common.io.FileFileFilter;
-import slash.common.io.WindowsShortcut;
+import slash.common.io.ResolvableLink;
 import slash.navigation.rest.exception.DuplicateNameException;
 import slash.navigation.rest.exception.ForbiddenException;
 import slash.navigation.routes.Category;
@@ -30,6 +29,7 @@ import slash.navigation.routes.Route;
 import java.io.*;
 import java.net.MalformedURLException;
 import java.net.URISyntaxException;
+import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -41,11 +41,10 @@ import static java.lang.String.format;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.commons.io.IOUtils.copyLarge;
 import static slash.common.io.Files.recursiveDelete;
-import static slash.common.io.Files.removeExtension;
 import static slash.common.io.InputOutput.DEFAULT_BUFFER_SIZE;
 import static slash.common.io.Transfer.UTF8_ENCODING;
 import static slash.common.io.Transfer.encodeFileName;
-import static slash.common.io.WindowsShortcut.isPotentialValidLink;
+import static slash.common.io.Files.resolveLink;
 
 /**
  * Represents a category in the file system.
@@ -79,12 +78,11 @@ public class LocalCategory implements Category {
         File[] directories = directory.listFiles(new DirectoryFileFilter());
         if(directories != null) {
             for (File subDirectory : directories) {
-                if (isPotentialValidLink(subDirectory)) {
-                    WindowsShortcut shortcut = new WindowsShortcut(subDirectory);
-                    if (shortcut.isDirectory()) {
-                        subDirectory = new File(removeExtension(shortcut.getRealFilename()));
-                    } else
+                ResolvableLink link = resolveLink(subDirectory);
+                if (link != null) {
+                    if (!link.isDirectory())
                         continue;
+                    subDirectory = new File(link.getRealFilename());
                 }
                 categories.add(new LocalCategory(catalog, subDirectory));
             }
@@ -107,7 +105,7 @@ public class LocalCategory implements Category {
         File newParent;
         String newName = encodeFileName(name);
         try {
-            newParent = parent != null ? new File(new URL(parent.getHref()).toURI()) : directory.getParentFile();
+            newParent = parent != null ? new File(new URI(parent.getHref())) : directory.getParentFile();
         } catch (URISyntaxException e) {
             throw new IOException(format("Cannot rename %s in %s to %s", directory, parent, name));
         }
@@ -125,15 +123,14 @@ public class LocalCategory implements Category {
 
     public List<Route> getRoutes() throws IOException {
         List<Route> routes = new ArrayList<>();
-        File[] files = directory.listFiles(new FileFileFilter());
+        File[] files = directory.listFiles(new RouteFileFilter());
         if(files != null) {
             for (File file : files) {
-                if (isPotentialValidLink(file)) {
-                    WindowsShortcut shortcut = new WindowsShortcut(file);
-                    if (shortcut.isFile())
-                        file = new File(shortcut.getRealFilename());
-                    else
+                ResolvableLink link = resolveLink(file);
+                if (link != null) {
+                    if (!link.isFile())
                         continue;
+                    file = new File(link.getRealFilename());
                 }
                 routes.add(new LocalRoute(file));
             }

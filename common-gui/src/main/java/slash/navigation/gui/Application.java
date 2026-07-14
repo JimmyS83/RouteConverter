@@ -54,6 +54,18 @@ public abstract class Application {
     private static final String PREFERRED_LANGUAGE_PREFERENCE = "preferredLanguage";
     private static final String PREFERRED_COUNTRY_PREFERENCE = "preferredCountry";
 
+    private static volatile CrashHandler crashHandler;
+    private static final ThreadLocal<Boolean> handlingCrash = ThreadLocal.withInitial(() -> Boolean.FALSE);
+
+    /**
+     * Registers the application-specific handler that receives every uncaught
+     * exception routed to the default handler installed in {@link #launch}. Kept
+     * pluggable so this application-generic module carries no report/dialog logic.
+     */
+    public static void setCrashHandler(CrashHandler handler) {
+        crashHandler = handler;
+    }
+
     Application() {
         exitListeners = new CopyOnWriteArrayList<>();
         context = new ApplicationContext();
@@ -74,7 +86,7 @@ public abstract class Application {
     public Locale getLocale() {
         String language = preferences.get(PREFERRED_LANGUAGE_PREFERENCE, "");
         String country = preferences.get(PREFERRED_COUNTRY_PREFERENCE, "");
-        return new Locale(language, country);
+        return Locale.of(language, country);
     }
 
     public void setLocale(Locale locale) {
@@ -90,7 +102,7 @@ public abstract class Application {
     private static void initializeLocale(Preferences preferences) {
         String language = preferences.get(PREFERRED_LANGUAGE_PREFERENCE, Locale.getDefault().getLanguage());
         String country = preferences.get(PREFERRED_COUNTRY_PREFERENCE, Locale.getDefault().getCountry());
-        Locale.setDefault(new Locale(language, country));
+        Locale.setDefault(Locale.of(language, country));
     }
 
     private static ResourceBundle initializeBundles(List<String> bundleNames) {
@@ -99,7 +111,47 @@ public abstract class Application {
         return bundle;
     }
 
+    /**
+     * Installs the last-resort uncaught-exception handler. Since Java 7 the EDT routes
+     * uncaught exceptions to the thread's handler, which falls back to this default.
+     * Without it, a throw in an invokeLater/background runnable (e.g. the async
+     * map/profile view setup) died on System.err and never reached the log file or an
+     * error report — a blank/half-built UI with nothing to diagnose. Now every uncaught
+     * exception, on any thread, lands in the RC log.
+     * <p>
+     * This also covers exceptions thrown on the EDT while a modal dialog's secondary
+     * event pump is active: on Java 9+ (verified on 17/21) EventDispatchThread.processException
+     * routes to getUncaughtExceptionHandler().uncaughtException(...), and the nested modal
+     * pump uses the same pumpOneEventForFilters -> processException path, so it falls back
+     * to this default handler too. No custom EventQueue is needed. (See
+     * EventDispatchThreadExceptionTest for the plain-EDT verification.)
+     * <p>
+     * The hand-off to the pluggable {@link CrashHandler} is guarded against a crash loop:
+     * a throw from within the handler is caught and must not re-enter it on the same
+     * thread (the concrete handler additionally shows at most one dialog per session and
+     * only spools further crashes).
+     */
+    static void installDefaultUncaughtExceptionHandler() {
+        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+            log.log(SEVERE, format("Uncaught exception in thread %s", thread.getName()), throwable);
+
+            CrashHandler handler = crashHandler;
+            if (handler != null && !handlingCrash.get()) {
+                handlingCrash.set(Boolean.TRUE);
+                try {
+                    handler.handleCrash(thread, throwable);
+                } catch (Throwable t) {
+                    log.log(SEVERE, "Crash handler failed", t);
+                } finally {
+                    handlingCrash.set(Boolean.FALSE);
+                }
+            }
+        });
+    }
+
     public static <T extends Application> void launch(final Class<T> applicationClass, final List<String> bundleNames, final String[] args) {
+        installDefaultUncaughtExceptionHandler();
+
         Runnable doCreateAndShowGUI = () -> {
             try {
                 setLookAndFeel();

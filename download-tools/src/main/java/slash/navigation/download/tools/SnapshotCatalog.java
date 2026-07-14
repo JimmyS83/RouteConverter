@@ -20,6 +20,7 @@
 package slash.navigation.download.tools;
 
 import org.apache.commons.cli.*;
+import org.apache.commons.cli.help.HelpFormatter;
 import slash.navigation.datasources.DataSource;
 import slash.navigation.datasources.DataSourceManager;
 import slash.navigation.datasources.Edition;
@@ -106,19 +107,25 @@ public class SnapshotCatalog extends BaseDownloadTool {
         CommandLineParser parser = new DefaultParser();
         Options options = new Options();
         options.addOption(Option.builder().argName(DATASOURCES_SERVER_ARGUMENT).numberOfArgs(1).longOpt("server").
-                desc("Data sources server").build());
+                desc("Data sources server").get());
         options.addOption(Option.builder().argName(RESET_ARGUMENT).longOpt("reset").
-                desc("Reset local snapshot").build());
+                desc("Reset local snapshot").get());
         try {
             return parser.parse(options, args);
         } catch (ParseException e) {
-            HelpFormatter formatter = new HelpFormatter();
-            formatter.printHelp(getClass().getSimpleName(), options);
+            try {
+                HelpFormatter.builder().get().printHelp(getClass().getSimpleName(), null, options, null, false);
+            } catch (IOException ignored) {
+                // help output is best-effort
+            }
             throw e;
         }
     }
 
     public static void main(String[] args) throws Exception {
+        // Server backward-compat (RouteConverter 3.3): include <source> in fetched XML.
+        // See download-tools/SCAN_CLIENT.md → "Server backward-compat".
+        System.setProperty(DataSourceManager.INCLUDE_SOURCE_PROPERTY, "true");
         new SnapshotCatalog().run(args);
         exit(0);
     }

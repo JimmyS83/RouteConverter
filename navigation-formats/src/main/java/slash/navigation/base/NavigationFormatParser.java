@@ -46,6 +46,7 @@ import static java.io.File.separatorChar;
 import static java.lang.Math.min;
 import static java.lang.String.format;
 import static slash.common.io.Files.getExtension;
+import static slash.common.io.Files.toUrl;
 import static slash.common.io.Transfer.ceiling;
 import static slash.common.type.CompactCalendar.UTC;
 import static slash.common.type.CompactCalendar.fromCalendar;
@@ -214,32 +215,35 @@ public class NavigationFormatParser {
         public void parse(String urlString) throws IOException {
             // replace CWD with current working directory for easier testing
             urlString = urlString.replace("CWD", new File(".").getCanonicalPath()).replace(separatorChar, '/');
-            URL url = new URL(urlString);
-            int readBufferSize = getSize(url);
-            log.info("Reading '" + url + "' with a buffer of " + readBufferSize + " bytes");
-            NotClosingUnderlyingInputStream buffer = new NotClosingUnderlyingInputStream(new BufferedInputStream(url.openStream(), CHUNK_BUFFER_SIZE));
-            // make sure not to read a byte after the limit
-            buffer.mark(readBufferSize + CHUNK_BUFFER_SIZE * 2);
-            try {
-                CompactCalendar startDate = extractStartDate(url);
-                internalSetStartDate(startDate);
-                internalRead(buffer, getNavigationFormatRegistry().getReadFormats(), this);
-            } finally {
-                buffer.closeUnderlyingInputStream();
+            URL url = toUrl(urlString);
+            byte[] bytes;
+            try (InputStream inputStream = url.openStream()) {
+                bytes = inputStream.readAllBytes();
             }
+            log.info("Reading '" + url + "' with " + bytes.length + " bytes");
+            internalSetStartDate(extractStartDate(url));
+            bufferedInternalRead(new ByteArrayInputStream(bytes), bytes.length, getNavigationFormatRegistry().getReadFormats(), this);
         }
     }
 
     private ParserResult read(InputStream source, int readBufferSize, CompactCalendar startDate, File file,
                               List<NavigationFormat> formats) throws IOException {
         log.fine("Reading '" + source + "' with a buffer of " + readBufferSize + " bytes by " + formats.size() + " formats");
+        ParserContext<BaseRoute> context = new InternalParserContext<>(file, startDate);
+        bufferedInternalRead(source, readBufferSize, formats, context);
+        return createResult(context);
+    }
+
+    /**
+     * Buffers the source and marks past its end so reset() between format
+     * attempts always succeeds, then probes the formats into the context.
+     */
+    private void bufferedInternalRead(InputStream source, int markSize, List<NavigationFormat> formats,
+                                      ParserContext context) throws IOException {
         NotClosingUnderlyingInputStream buffer = new NotClosingUnderlyingInputStream(new BufferedInputStream(source, CHUNK_BUFFER_SIZE));
-        // make sure not to read a byte after the limit
-        buffer.mark(readBufferSize + CHUNK_BUFFER_SIZE * 2);
+        buffer.mark(markSize + CHUNK_BUFFER_SIZE * 2);
         try {
-            ParserContext<BaseRoute> context = new InternalParserContext<>(file, startDate);
             internalRead(buffer, formats, context);
-            return createResult(context);
         } finally {
             buffer.closeUnderlyingInputStream();
         }
@@ -255,17 +259,6 @@ public class NavigationFormatParser {
 
     public ParserResult read(InputStream source, List<NavigationFormat> formats) throws IOException {
         return read(source, TOTAL_BUFFER_SIZE, null, null, formats);
-    }
-
-    private int getSize(URL url) throws IOException {
-        try {
-            if (url.getProtocol().equals("file"))
-                return (int) new File(url.toURI()).length();
-            else
-                return TOTAL_BUFFER_SIZE;
-        } catch (URISyntaxException e) {
-            throw new IOException("Cannot determine file from URL: " + e);
-        }
     }
 
     private CompactCalendar extractStartDate(File file) {
@@ -311,14 +304,19 @@ public class NavigationFormatParser {
         }
 
         if (isGoogleMapsProfileUrl(url)) {
-            url = new URL(url.toExternalForm() + "&output=kml");
+            url = toUrl(url.toExternalForm() + "&output=kml");
             formats = new ArrayList<>(formats);
             formats.add(0, new Kml22Format());
         }
 
-        int readBufferSize = getSize(url);
-        log.info("Reading '" + url + "' with a buffer of " + readBufferSize + " bytes");
-        return read(url.openStream(), readBufferSize, extractStartDate(url), extractFile(url), formats);
+        // read the whole response into memory so the exact size drives the mark()
+        // read limit; a fixed guess smaller than the content broke reset() between
+        // format attempts for catalog files larger than the default buffer
+        try (InputStream inputStream = url.openStream()) {
+            byte[] bytes = inputStream.readAllBytes();
+            log.info("Reading '" + url + "' with " + bytes.length + " bytes");
+            return read(new ByteArrayInputStream(bytes), bytes.length, extractStartDate(url), extractFile(url), formats);
+        }
     }
 
     public ParserResult read(URL url) throws IOException {

@@ -27,7 +27,7 @@ import slash.navigation.common.LongitudeAndLatitude;
 import slash.navigation.common.NavigationPosition;
 import slash.navigation.converter.gui.models.ColorModel;
 import slash.navigation.gui.models.IntegerModel;
-import slash.navigation.mapview.mapsforge.MapViewCallbackOpenSource;
+import slash.navigation.mapview.mapsforge.MapsforgeMapViewCallback;
 import slash.navigation.mapview.mapsforge.MapsforgeMapView;
 import slash.navigation.mapview.mapsforge.lines.Line;
 import slash.navigation.mapview.mapsforge.lines.Polyline;
@@ -56,15 +56,15 @@ public class RouteRenderer {
     private static final Logger log = Logger.getLogger(RouteRenderer.class.getName());
 
     private final Object notificationMutex = new Object();
-    private boolean drawingRoute, drawingBeeline;
+    private boolean drawingRoute, drawingStraightLine;
 
     private final MapsforgeMapView mapView;
-    private final MapViewCallbackOpenSource mapViewCallback;
+    private final MapsforgeMapViewCallback mapViewCallback;
     private final ColorModel routeColorModel;
     private final IntegerModel routeLineWidthModel;
     private final GraphicFactory graphicFactory;
 
-    public RouteRenderer(MapsforgeMapView mapView, MapViewCallbackOpenSource mapViewCallback, ColorModel routeColorModel,
+    public RouteRenderer(MapsforgeMapView mapView, MapsforgeMapViewCallback mapViewCallback, ColorModel routeColorModel,
                          IntegerModel routeLineWidthModel, GraphicFactory graphicFactory) {
         this.mapView = mapView;
         this.mapViewCallback = mapViewCallback;
@@ -96,7 +96,7 @@ public class RouteRenderer {
     }
 
     private void internalRenderRoute(String mapIdentifier, List<PairWithLayer> pairWithLayers, Runnable invokeAfterRenderingRunnable) {
-        drawBeeline(pairWithLayers);
+        drawStraightLine(pairWithLayers);
         synchronized (notificationMutex) {
             if(!drawingRoute)
                 return;
@@ -109,7 +109,7 @@ public class RouteRenderer {
                 return;
         }
 
-        waitForBeelineRendering();
+        waitForStraightLineRendering();
         synchronized (notificationMutex) {
             if(!drawingRoute)
                 return;
@@ -135,10 +135,10 @@ public class RouteRenderer {
         }
     }
 
-    private void waitForBeelineRendering() {
+    private void waitForStraightLineRendering() {
         while (true) {
             synchronized (notificationMutex) {
-                if (!drawingBeeline)
+                if (!drawingStraightLine)
                     return;
             }
 
@@ -161,9 +161,9 @@ public class RouteRenderer {
             future.process();
     }
 
-    private void drawBeeline(List<PairWithLayer> pairWithLayers) {
+    private void drawStraightLine(List<PairWithLayer> pairWithLayers) {
         synchronized (notificationMutex) {
-            drawingBeeline = true;
+            drawingStraightLine = true;
         }
         try {
             for (PairWithLayer pairWithLayer : pairWithLayers) {
@@ -180,7 +180,7 @@ public class RouteRenderer {
             }
         } finally {
             synchronized (notificationMutex) {
-                drawingBeeline = false;
+                drawingStraightLine = false;
             }
         }
     }
@@ -212,7 +212,7 @@ public class RouteRenderer {
             if (!pairWithLayer.hasCoordinates())
                 continue;
 
-            // first calculate route, then remove beeline layer then add polyline layer from routing
+            // first calculate route, then remove straight-line layer then add polyline layer from routing
             Layer layer = pairWithLayer.getLayer();
             IntermediateRoute intermediateRoute = calculateRoute(routingService, future, pairWithLayer);
 
@@ -288,3 +288,4 @@ public class RouteRenderer {
         return result;
     }
 }
+

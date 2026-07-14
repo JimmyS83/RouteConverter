@@ -58,7 +58,8 @@ import static java.util.Arrays.asList;
 import static java.util.Collections.singletonList;
 import static javax.swing.JOptionPane.*;
 import static slash.common.io.Directories.ensureDirectory;
-import static slash.common.io.Files.asDialogString;
+import static slash.common.io.Files.asLogString;
+import static slash.common.io.Transfer.formatSize;
 import static slash.common.io.Files.removeExtension;
 import static slash.navigation.download.Action.Extract;
 import static slash.navigation.graphhopper.PbfUtil.lookupGraphDirectory;
@@ -177,7 +178,7 @@ public class GraphHopper extends BaseRoutingService {
             request.setCustomModel(customModel);
             GHResponse response = hopper.route(request);
             if (response.hasErrors()) {
-                String errors = asDialogString(response.getErrors(), false);
+                String errors = asLogString(response.getErrors());
                 log.severe(format("Error while routing between %s and %s: %s", from, to, errors));
 
                 boolean pointNotFound = !response.getErrors().isEmpty() && response.getErrors().get(0) instanceof DetailedIllegalArgumentException;
@@ -382,7 +383,7 @@ public class GraphHopper extends BaseRoutingService {
                 int confirm = showConfirmDialog(null,
                         "Do you want to download the routing data\n" +
                                 file.getUri() + "\n" +
-                                "with a size of " + (size != null ? size / (1024 * 1024) : "a large number of ") + " MBytes?",
+                                "with a size of " + formatSize(size) + "?",
                         "GraphHopper", YES_NO_OPTION);
                 if (confirm == YES_OPTION)
                     return true;
@@ -433,7 +434,7 @@ public class GraphHopper extends BaseRoutingService {
         Action action = Action.valueOf(downloadable.getDataSource().getAction());
         File file = action.equals(Extract) ? createDirectory(downloadable) : createFile(downloadable);
         return downloadManager.queueForDownload(getName() + " Routing Data: " + uri, url, action,
-                new FileAndChecksum(file, downloadable.getLatestChecksum()), null);
+                FileAndChecksum.forChecksums(file, downloadable.getChecksums()), null);
     }
 
     public long calculateRemainingDownloadSize(List<MapDescriptor> mapDescriptors) {

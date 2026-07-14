@@ -24,6 +24,7 @@ import slash.common.type.CompactCalendar;
 
 import java.io.*;
 import java.net.MalformedURLException;
+import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.LinkOption;
@@ -71,7 +72,7 @@ public class Files {
     }
 
     public static String getExtension(URL url) {
-        return getExtension(url.toExternalForm()).toLowerCase();
+        return getExtension(url.toExternalForm());
     }
 
     public static String getExtension(List<URL> urls) {
@@ -81,7 +82,23 @@ public class Files {
             if (found.length() > extension.length())
                 extension = found;
         }
-        return extension.toLowerCase();
+        return extension;
+    }
+
+    /**
+     * Resolves a file that may be an indirection to another file or directory:
+     * a Windows shortcut ({@code .lnk}) or a macOS Finder alias.
+     *
+     * @param file the file to inspect
+     * @return a {@link ResolvableLink} for the target, or null if the file is not such an indirection
+     * @throws IOException if the file cannot be read
+     */
+    public static ResolvableLink resolveLink(File file) throws IOException {
+        if (WindowsShortcut.isPotentialValidLink(file))
+            return new WindowsShortcut(file);
+        if (MacAlias.isPotentialValidAlias(file))
+            return new MacAlias(file);
+        return null;
     }
 
     /**
@@ -178,19 +195,27 @@ public class Files {
         return null;
     }
 
+    /**
+     * Converts a URL or local (possibly relative or space-bearing) path string
+     * to a {@link URL}, falling back to file semantics when the string is not a
+     * valid absolute URI. Replaces the deprecated {@code new URL(String)}.
+     */
+    public static URL toUrl(String urlOrPath) throws MalformedURLException {
+        try {
+            return new URI(urlOrPath).toURL();
+        } catch (URISyntaxException | IllegalArgumentException e) {
+            // fallback from URL to file (relative paths, spaces, ...)
+            return new File(urlOrPath).toURI().toURL();
+        }
+    }
+
     public static List<URL> toUrls(String... urls) {
         List<URL> result = new ArrayList<>(urls.length);
         for (String url : urls) {
             try {
-                result.add(new URL(url));
+                result.add(toUrl(url));
             } catch (MalformedURLException e) {
-
-                // fallback from URL to file
-                try {
-                    result.add(new File(url).toURI().toURL());
-                } catch (MalformedURLException e1) {
-                    // intentionally left empty
-                }
+                // intentionally left empty
             }
         }
         return result;
@@ -460,7 +485,12 @@ public class Files {
         delete(path);
     }
 
-    public static <T> String asDialogString(List<T> list, boolean shorten) {
+    /**
+     * Joins a list into a human-readable, English, uncapped string for log
+     * output, e.g. {@code 'a',\n'b' and\n'c'}. For user-facing dialog text use
+     * the localized, capped formatter in the GUI layer instead.
+     */
+    public static <T> String asLogString(List<T> list) {
         if (list == null)
             return "null";
         if (list.isEmpty())
@@ -473,10 +503,7 @@ public class Files {
                     buffer.append(" and\n");
                 else
                     buffer.append(",\n");
-            String string = list.get(i).toString();
-            if(shorten)
-                string = shortenPath(string, 60);
-            buffer.append("'").append(string).append("'");
+            buffer.append("'").append(list.get(i).toString()).append("'");
         }
         return buffer.toString();
     }

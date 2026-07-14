@@ -7,17 +7,17 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        java: [ 17, 20, 21 ]
-    name: Java ${{ matrix.java }} compatibility
+        java: [ 21, 25 ]
+    name: Java ${{ matrix.java }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up JDK ${{ matrix.java }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'zulu'
           java-version: ${{ matrix.java }}
       - name: Cache Maven packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.m2
           key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
@@ -25,23 +25,30 @@ jobs:
       - name: Show Maven version
         run: mvn --version
       - name: Build with Maven
-        run: mvn --batch-mode --update-snapshots verify
+        run: mvn --batch-mode -Dmaven.build.number=${{ github.run_number }} --update-snapshots verify
+      # Upload coverage once per build (Java 21 only — avoid duplicate uploads from the matrix)
+      - name: Upload coverage to Codecov
+        if: matrix.java == 21
+        uses: codecov/codecov-action@v5.5.5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
 
   prerelease:
     runs-on: windows-latest
     strategy:
       matrix:
-        java: [ 17 ]
+        java: [ 21 ]
     name: Java ${{ matrix.java }} on Windows
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up JDK ${{ matrix.java }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'zulu'
           java-version: ${{ matrix.java }}
       - name: Cache Maven packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.m2
           key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
@@ -49,9 +56,15 @@ jobs:
       - name: Show Maven version
         run: mvn --version
       - name: Build with Maven
-        run: mvn --batch-mode --update-snapshots verify
-      - uses: actions/upload-artifact@v4
+        # Quote the -D: pwsh (default windows-latest shell) tokenizes
+        # `.build.number` as member-access, splitting the arg into
+        # `-Dmaven` + `.build.number=NNN` → mvn sees the latter as a
+        # lifecycle phase and dies.
+        run: mvn --batch-mode "-Dmaven.build.number=${{ github.run_number }}" --update-snapshots verify
+      - uses: actions/upload-artifact@v7
         with:
           name: RouteConverter Windows Prerelease built with Java ${{ matrix.java }}
-          path: RouteConverterWindowsOpenSource/target/RouteConverterWindowsOpenSource.exe
+          # The needs-Java launch4j .exe is gone (specs/00044); this PR-smoke
+          # build runs `mvn verify` (no NSIS), so upload the shaded launcher jar.
+          path: RouteConverterWindows/target/RouteConverterWindows.jar
           overwrite: true

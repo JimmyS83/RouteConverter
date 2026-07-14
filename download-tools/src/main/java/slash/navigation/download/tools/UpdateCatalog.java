@@ -21,6 +21,7 @@ package slash.navigation.download.tools;
 
 import jakarta.xml.bind.JAXBException;
 import org.apache.commons.cli.*;
+import org.apache.commons.cli.help.HelpFormatter;
 import slash.navigation.common.BoundingBox;
 import slash.navigation.datasources.*;
 import slash.navigation.datasources.binding.*;
@@ -106,6 +107,23 @@ public class UpdateCatalog extends BaseDownloadTool {
         close();
     }
 
+    // Keep the newly-observed checksum plus a bounded history of previously-recorded ones, so a client
+    // that downloaded any recent upstream build still validates (see GitHub #155). Upstreams that rebuild
+    // a file on a schedule (e.g. BRouter segment tiles) change the content hash per build; a single
+    // stored checksum would make every such download look "outdated".
+    static final int MAX_CHECKSUMS_PER_FILE = 30;
+
+    static List<Checksum> mergeChecksums(List<Checksum> existing, Checksum latest) {
+        List<Checksum> result = new ArrayList<>();
+        if (latest != null)
+            result.add(latest);
+        if (existing != null)
+            for (Checksum checksum : existing)
+                if (checksum != null && !result.contains(checksum))
+                    result.add(checksum);
+        return result.size() > MAX_CHECKSUMS_PER_FILE ? new ArrayList<>(result.subList(0, MAX_CHECKSUMS_PER_FILE)) : result;
+    }
+
     private void updateFile(DatasourceType datasourceType, File file) throws IOException {
         String url = datasourceType.getBaseUrl() + file.getUri();
 
@@ -120,7 +138,7 @@ public class UpdateCatalog extends BaseDownloadTool {
         }
 
         Checksum checksum = download.getFile().getActualChecksum();
-        FileType fileType = createFileType(file.getUri(), singletonList(checksum), null);
+        FileType fileType = createFileType(file.getUri(), mergeChecksums(file.getChecksums(), checksum), null);
         datasourceType.getFile().add(fileType);
 
         if (file.getUri().endsWith(DOT_ZIP)) {
@@ -185,7 +203,7 @@ public class UpdateCatalog extends BaseDownloadTool {
         }
 
         Checksum checksum = download.getFile().getActualChecksum();
-        MapType mapType = createMapType(map.getUri(), singletonList(checksum), null);
+        MapType mapType = createMapType(map.getUri(), mergeChecksums(map.getChecksums(), checksum), null);
         datasourceType.getMap().add(mapType);
 
         // GET with range for .zip or .map header
@@ -258,7 +276,7 @@ public class UpdateCatalog extends BaseDownloadTool {
         }
 
         Checksum checksum = download.getFile().getActualChecksum();
-        ThemeType themeType = createThemeType(theme.getUri(), singletonList(checksum), null);
+        ThemeType themeType = createThemeType(theme.getUri(), mergeChecksums(theme.getChecksums(), checksum), null);
         datasourceType.getTheme().add(themeType);
 
         if (theme.getUri().endsWith(DOT_ZIP)) {
@@ -362,25 +380,31 @@ public class UpdateCatalog extends BaseDownloadTool {
         CommandLineParser parser = new DefaultParser();
         Options options = new Options();
         options.addOption(Option.builder().argName(ID_ARGUMENT).hasArgs().required().longOpt("id").
-                desc("ID of the data source").build());
+                desc("ID of the data source").get());
         options.addOption(Option.builder().argName(DATASOURCES_SERVER_ARGUMENT).numberOfArgs(1).longOpt("server").
-                desc("Data sources server").build());
+                desc("Data sources server").get());
         options.addOption(Option.builder().argName(DATASOURCES_USERNAME_ARGUMENT).numberOfArgs(1).longOpt("username").
-                desc("Data sources server user name").build());
+                desc("Data sources server user name").get());
         options.addOption(Option.builder().argName(DATASOURCES_PASSWORD_ARGUMENT).numberOfArgs(1).longOpt("password").
-                desc("Data sources server password").build());
+                desc("Data sources server password").get());
         options.addOption(Option.builder().argName(MIRROR_ARGUMENT).numberOfArgs(1).required().longOpt("mirror").
-                desc("Filesystem path to mirror resources").build());
+                desc("Filesystem path to mirror resources").get());
         try {
             return parser.parse(options, args);
         } catch (ParseException e) {
-            HelpFormatter formatter = new HelpFormatter();
-            formatter.printHelp(getClass().getSimpleName(), options);
+            try {
+                HelpFormatter.builder().get().printHelp(getClass().getSimpleName(), null, options, null, false);
+            } catch (IOException ignored) {
+                // help output is best-effort
+            }
             throw e;
         }
     }
 
     public static void main(String[] args) throws Exception {
+        // Server backward-compat (RouteConverter 3.3): include <source> in fetched XML.
+        // See download-tools/SCAN_CLIENT.md → "Server backward-compat".
+        System.setProperty(slash.navigation.datasources.DataSourceManager.INCLUDE_SOURCE_PROPERTY, "true");
         new UpdateCatalog().run(args);
         exit(0);
     }

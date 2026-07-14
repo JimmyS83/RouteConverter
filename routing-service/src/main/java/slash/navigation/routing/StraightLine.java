@@ -1,0 +1,104 @@
+/*
+    This file is part of RouteConverter.
+
+    RouteConverter is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+
+    RouteConverter is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with RouteConverter; if not, write to the Free Software
+    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+
+    Copyright (C) 2007 Christian Pesch. All Rights Reserved.
+*/
+
+package slash.navigation.routing;
+
+import slash.navigation.common.DistanceAndTime;
+import slash.navigation.common.LongitudeAndLatitude;
+import slash.navigation.common.MapDescriptor;
+import slash.navigation.common.NavigationPosition;
+
+import java.util.List;
+
+import static java.util.Arrays.asList;
+import static java.util.Collections.singletonList;
+import static slash.navigation.common.Bearing.calculateBearing;
+import static slash.navigation.routing.RoutingResult.Validity.Invalid;
+import static slash.navigation.routing.TravelRestrictions.NO_RESTRICTIONS;
+
+/**
+ * A routing service that does no routing, i.e. returns straight-line distances.
+ *
+ * @author Christian Pesch
+ */
+
+public class StraightLine extends BaseRoutingService {
+    private static final TravelMode STRAIGHT_LINE = new TravelMode("StraightLine");
+
+    public String getName() {
+        // Stored as the routingService preference and used as a preference-key suffix
+        // (see RoutingPreferencesModel); the display label is localized in
+        // RoutingServiceListCellRenderer via the routing-service-straightline bundle key.
+        return "StraightLine";
+    }
+
+    public boolean isInitialized() {
+        return true;
+    }
+
+    public boolean isDownload() {
+        return false;
+    }
+
+    public List<TravelMode> getAvailableTravelModes() {
+        return singletonList(STRAIGHT_LINE);
+    }
+
+    public TravelRestrictions getAvailableTravelRestrictions() {
+        return NO_RESTRICTIONS;
+    }
+
+    public TravelMode getPreferredTravelMode() {
+        return STRAIGHT_LINE;
+    }
+
+    public String getPath() {
+        throw new UnsupportedOperationException();
+    }
+
+    public void setPath(String path) {
+        throw new UnsupportedOperationException();
+    }
+
+    public static RoutingResult getRouteBetween(NavigationPosition from, NavigationPosition to) {
+        double distance = calculateBearing(from.getLongitude(), from.getLatitude(), to.getLongitude(), to.getLatitude()).getDistance();
+        return new RoutingResult(asList(from, to), new DistanceAndTime(distance, null), Invalid);
+    }
+
+    public RoutingResult getRouteBetween(NavigationPosition from, NavigationPosition to, TravelMode travelMode, TravelRestrictions travelRestrictions) {
+        return getRouteBetween(from, to);
+    }
+
+    public NavigationPosition getSnapToRoadPosition(NavigationPosition position) {
+        return null;
+    }
+
+    public DownloadFuture downloadRoutingDataFor(String mapIdentifier, List<LongitudeAndLatitude> longitudeAndLatitudes) {
+        throw new UnsupportedOperationException();
+    }
+
+    public long calculateRemainingDownloadSize(List<MapDescriptor> mapDescriptors) {
+        throw new UnsupportedOperationException();
+    }
+
+    public void downloadRoutingData(List<MapDescriptor> mapDescriptors) {
+        throw new UnsupportedOperationException();
+    }
+}

@@ -20,12 +20,16 @@
 
 package slash.navigation.kml;
 
+import jakarta.xml.bind.JAXBElement;
 import slash.common.type.CompactCalendar;
 import slash.navigation.base.RouteCharacteristics;
 import slash.navigation.common.NavigationPosition;
 
+import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
 import java.text.ParseException;
 import java.util.*;
+import java.util.function.Function;
 import java.util.prefs.Preferences;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -194,6 +198,141 @@ public abstract class KmlFormat extends BaseKmlFormat {
             Double speed = parseSpeed(description);
             position.setSpeed(speed);
         }
+    }
+
+    /**
+     * Appends a placemark's positions as a single waypoint (one position) or a track (more).
+     * Shared across all KML versions. The only behavioural divergence is which name feeds
+     * parseCharacteristics: KML 2.0/2.1/2.2-beta use the path-prefixed route name, KML 2.2 uses
+     * the bare placemark name; characteristicsFromRouteName preserves that exactly.
+     */
+    protected void appendPlacemarkAsWaypointOrTrack(String name, String description, String placemarkName,
+                                                    boolean characteristicsFromRouteName, String placemarkDescription,
+                                                    String styleUrl, CompactCalendar time, List<KmlPosition> positions,
+                                                    List<KmlPosition> waypoints, slash.navigation.base.ParserContext<KmlRoute> context) {
+        if (positions.size() == 1) {
+            KmlPosition wayPoint = positions.get(0);
+            enrichPosition(wayPoint, time, placemarkName, placemarkDescription, context.getStartDate());
+            waypoints.add(wayPoint);
+        } else {
+            String routeName = concatPath(name, asName(placemarkName));
+            List<String> routeDescription = asDescription(placemarkDescription != null ? placemarkDescription : description);
+            RouteCharacteristics characteristics = parseCharacteristics(characteristicsFromRouteName ? routeName : placemarkName, styleUrl, Track);
+            context.appendRoute(new KmlRoute(this, characteristics, routeName, routeDescription, positions));
+        }
+    }
+
+    /**
+     * Prepends the accumulated single-position placemarks as one combined waypoint route.
+     * Identical across all KML versions.
+     */
+    protected void prependWaypointsRoute(String name, String description, List<KmlPosition> waypoints,
+                                         slash.navigation.base.ParserContext<KmlRoute> context) {
+        if (!waypoints.isEmpty()) {
+            RouteCharacteristics characteristics = parseCharacteristics(name, null, Waypoints);
+            context.prependRoute(new KmlRoute(this, characteristics, name, asDescription(description), waypoints));
+        }
+    }
+
+    /**
+     * Filters a list of feature elements down to those whose element local name matches,
+     * regardless of the JAXB-bound feature supertype (KML 2.1 binds against FeatureType,
+     * KML 2.2-beta/2.2 against AbstractFeatureType) -- the lookup only needs the element's
+     * QName, which JAXBElement exposes independent of its type parameter. Identical across
+     * all three modern KML versions; previously duplicated verbatim in each.
+     */
+    @SuppressWarnings("unchecked")
+    protected <T> List<JAXBElement<T>> find(List<? extends JAXBElement<?>> elements, String name, Class<T> resultClass) {
+        List<JAXBElement<T>> result = new ArrayList<>();
+        if (elements != null) {
+            for (JAXBElement<?> element : elements) {
+                if (name.equals(element.getName().getLocalPart()))
+                    result.add((JAXBElement<T>) element);
+            }
+        }
+        return result;
+    }
+
+    @FunctionalInterface
+    protected interface FeatureRecursor<T> {
+        void recurse(String name, T value) throws IOException;
+    }
+
+    /**
+     * Recurses into each child container (KML Folder or Document), invoking recurseInto with the
+     * container's resolved name and its raw (version-specific) value. nameOf may return null to
+     * skip a container without recursing into it -- KML 2.2 uses this to ignore its internal
+     * "speed" and "marks" folders, a behaviour the other versions don't have and don't trigger
+     * (their nameOf never returns null). Loop shape identical across KML 2.1/2.2-beta/2.2;
+     * the per-version divergence lives entirely in the nameOf/recurseInto lambdas the caller
+     * supplies.
+     */
+    protected <T> void extractTracksFromContainers(List<JAXBElement<T>> containers, Function<T, String> nameOf,
+                                                    FeatureRecursor<T> recurseInto) throws IOException {
+        for (JAXBElement<T> container : containers) {
+            T value = container.getValue();
+            String containerName = nameOf.apply(value);
+            if (containerName != null)
+                recurseInto.recurse(containerName, value);
+        }
+    }
+
+    /**
+     * Extracts positions from a Point/LineString/MultiGeometry element by dispatching on the
+     * element's local name rather than its JAXB-bound Java type. KML 2.1/2.2-beta/2.2 each
+     * generate separate, unrelated PointType/LineStringType/MultiGeometryType classes with no
+     * shared supertype, but all three expose an identical getCoordinates() shape on Point/
+     * LineString -- read here via reflection so one method serves all three instead of each
+     * duplicating the same instanceof chain. Geometry kinds other than Point/LineString/
+     * MultiGeometry (e.g. KML 2.2's gx:Track) are left to the caller, matching the original
+     * per-version code, which also silently ignored anything it didn't explicitly check for.
+     *
+     * multiGeometryChildrenOf supplies the version-specific MultiGeometry child accessor
+     * (getGeometry() in KML 2.1, getAbstractGeometryGroup() in 2.2-beta/2.2); recurse must be
+     * the caller's own full extraction method (not this one), so that version-specific geometry
+     * kinds nested inside a MultiGeometry are still recognised by the caller on the way back in.
+     * Operates on raw JAXBElement<?>/Object rather than a shared bound type -- the per-version
+     * binding classes don't have one -- so each caller's lambdas carry a single unchecked cast at
+     * the type-erasure boundary; that cast is always safe since the value really is whatever
+     * binding type the caller's own JAXB unmarshalling produced.
+     */
+    protected List<KmlPosition> extractPositionsByElementName(JAXBElement<?> geometryElement,
+                                                               Function<Object, List<? extends JAXBElement<?>>> multiGeometryChildrenOf,
+                                                               Function<JAXBElement<?>, List<KmlPosition>> recurse) {
+        List<KmlPosition> positions = new ArrayList<>();
+        if (geometryElement == null)
+            return positions;
+        Object value = geometryElement.getValue();
+        switch (geometryElement.getName().getLocalPart()) {
+            case "Point", "LineString" -> positions.addAll(asKmlPositions(reflectGetCoordinates(value)));
+            case "MultiGeometry" -> {
+                for (JAXBElement<?> child : multiGeometryChildrenOf.apply(value))
+                    positions.addAll(recurse.apply(child));
+            }
+            default -> { /* geometry kind not handled here; left to the caller, as before */ }
+        }
+        return positions;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> reflectGetCoordinates(Object geometryValue) {
+        try {
+            return (List<String>) geometryValue.getClass().getMethod("getCoordinates").invoke(geometryValue);
+        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
+            throw new IllegalStateException("Cannot read coordinates from " + geometryValue.getClass(), e);
+        }
+    }
+
+    /**
+     * Renders route.getPositions()[startIndex, endIndex) as KML coordinate strings for a
+     * LineString. Identical across all KML versions; previously duplicated in each createTrack().
+     */
+    protected List<String> createLineStringCoordinates(KmlRoute route, int startIndex, int endIndex) {
+        List<String> coordinates = new ArrayList<>();
+        List<KmlPosition> positions = route.getPositions();
+        for (int i = startIndex; i < endIndex; i++)
+            coordinates.add(createCoordinates(positions.get(i), false));
+        return coordinates;
     }
 
     private static final Pattern TAVELLOG_DATE_PATTERN = Pattern.compile(".*Time:.*(\\d{4}/\\d{2}/\\d{2} \\d{2}:\\d{2}:\\d{2}).*");

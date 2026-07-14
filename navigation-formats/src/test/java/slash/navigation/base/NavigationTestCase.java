@@ -62,11 +62,17 @@ import slash.navigation.url.GoogleMapsUrlFormat;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.nio.charset.MalformedInputException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static java.io.File.separator;
 import static java.lang.Integer.MAX_VALUE;
@@ -79,12 +85,96 @@ import static slash.navigation.base.BaseNavigationFormat.GENERATED_BY;
 import static slash.navigation.base.RouteCharacteristics.*;
 
 public abstract class NavigationTestCase extends TestCase {
-    public static final String ROUTE_PATH = System.getProperty("samples", "navigation-formats-samples" + separator + "src") + separator;
+    private static final Pattern LOCAL_ROUTE_SAMPLE_REFERENCE = Pattern.compile("file:///CWD/\\.\\./rc-samples/trunk/(test|samples)/([^\\r\\n\"<]+)");
+
+    public static final String ROUTE_PATH = resolveRoutePath();
     public static final String TEST_PATH = ROUTE_PATH + "test" + separator;
     public static final String SAMPLE_PATH = ROUTE_PATH + "samples" + separator;
 
     static {
         JAXBHelper.setCacheContexts(true);
+    }
+
+    private static String resolveRoutePath() {
+        String configuredSamples = System.getProperty("samples");
+        if (configuredSamples != null && !configuredSamples.trim().isEmpty())
+            return appendSeparator(configuredSamples);
+
+        String[] sampleDirectories = {
+                "navigation-formats-samples",
+                ".." + separator + "navigation-formats-samples"
+        };
+
+        for (String sampleDirectory : sampleDirectories) {
+            String routePath = findRoutePath(new File(sampleDirectory));
+            if (routePath != null)
+                return routePath;
+        }
+
+        return appendSeparator("navigation-formats-samples" + separator + "src");
+    }
+
+    private static String findRoutePath(File directory) {
+        if (hasTestAndSampleDirectories(directory))
+            return appendSeparator(directory.getPath());
+
+        File[] children = directory.listFiles();
+        if (children == null)
+            return null;
+
+        File fallback = null;
+        for (File child : children) {
+            if (hasTestAndSampleDirectories(child)) {
+                // prefer "src-rc*" directories (private full sample set) over "src" (public subset)
+                if (child.getName().startsWith("src-rc"))
+                    return appendSeparator(child.getPath());
+                if (fallback == null)
+                    fallback = child;
+            }
+        }
+
+        return fallback != null ? appendSeparator(fallback.getPath()) : null;
+    }
+
+    private static boolean hasTestAndSampleDirectories(File directory) {
+        return directory.isDirectory() &&
+                new File(directory, "test").isDirectory() &&
+                new File(directory, "samples").isDirectory();
+    }
+
+    private static String appendSeparator(String path) {
+        return path.endsWith(separator) ? path : path + separator;
+    }
+
+    public static File createHermeticSampleFile(File file) throws IOException {
+        String name = file.getName();
+        if (!name.endsWith(".kml") && !name.endsWith(".url"))
+            return file;
+
+        String content;
+        try {
+            content = Files.readString(file.toPath(), StandardCharsets.UTF_8);
+        } catch (MalformedInputException e) {
+            return file;
+        }
+
+        Matcher matcher = LOCAL_ROUTE_SAMPLE_REFERENCE.matcher(content);
+        if (!matcher.find())
+            return file;
+
+        StringBuffer buffer = new StringBuffer();
+        do {
+            File referenced = new File(ROUTE_PATH + matcher.group(1) + separator + matcher.group(2)).getCanonicalFile();
+            matcher.appendReplacement(buffer, Matcher.quoteReplacement(referenced.toURI().toString()));
+        } while (matcher.find());
+        matcher.appendTail(buffer);
+
+        Path temporaryDirectory = Files.createTempDirectory("navigation-test-sample-");
+        temporaryDirectory.toFile().deleteOnExit();
+        Path target = temporaryDirectory.resolve(name);
+        Files.writeString(target, buffer.toString(), StandardCharsets.UTF_8);
+        target.toFile().deleteOnExit();
+        return target.toFile();
     }
 
     public static void assertDescriptionEquals(List<String> expected, List<String> was) {

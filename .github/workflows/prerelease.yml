@@ -1,0 +1,91 @@
+name: Prerelease
+
+on:
+  push:
+    branches: [master]
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: prerelease
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux-mac:
+    if: |
+      github.event_name != 'push'
+      || github.actor != 'github-actions[bot]'
+      || !startsWith(github.event.head_commit.message, '[maven-release-plugin]')
+    uses: ./.github/workflows/_build-linux-mac.yml
+    with:
+      artefact-name: prerelease-linux-mac
+      retention-days: 7
+      sign: true
+      # prereleases stay on test-signing (auto, no approval gate). Production
+      # release-signing requires manual approval in the SignPath app — reserved
+      # for release.yml. (rc-meta specs/00043.)
+    secrets: inherit
+
+  build-windows:
+    if: |
+      github.event_name != 'push'
+      || github.actor != 'github-actions[bot]'
+      || !startsWith(github.event.head_commit.message, '[maven-release-plugin]')
+    uses: ./.github/workflows/_build-windows.yml
+    with:
+      artefact-name: prerelease-windows
+      retention-days: 7
+      sign: true
+      # prereleases stay on test-signing (auto, no approval gate). Production
+      # release-signing requires manual approval in the SignPath app — reserved
+      # for release.yml. (rc-meta specs/00043.)
+    secrets: inherit
+
+  publish:
+    needs: [build-linux-mac, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: incoming
+          pattern: prerelease-*
+      - name: Flatten
+        run: |
+          mkdir -p artefacts
+          find incoming -mindepth 2 -type f -exec mv -t artefacts/ {} +
+          ls -la artefacts/
+      - name: Configure SSH
+        env:
+          DEPLOY_KEY: ${{ secrets.RC_RELEASE_DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.RC_RELEASE_DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+      - name: Rsync to static.routeconverter.com/downloads/prereleases/
+        env:
+          DEPLOY_HOST: ${{ secrets.RC_RELEASE_DEPLOY_HOST }}
+        run: |
+          # --delete: /prerelease/ mirrors only the current build; prunes renamed/
+          # discontinued assets so stale files aren't served (matches release.yml)
+          rsync -av --delete --omit-dir-times --no-perms \
+            artefacts/ \
+            "rc-release-deploy@${DEPLOY_HOST}:/var/www/routeconverter.com/static/downloads/prereleases/"
+      - name: Update rolling 'prerelease' GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO:     ${{ github.repository }}
+        run: |
+          tag=prerelease
+          gh release delete "$tag" --repo "$REPO" --yes --cleanup-tag || true
+          gh release create "$tag" artefacts/* \
+            --repo "$REPO" \
+            --title "Rolling prerelease ($(date -u +%Y-%m-%d))" \
+            --notes "Automated build of master @ ${GITHUB_SHA::7}." \
+            --prerelease \
+            --target master

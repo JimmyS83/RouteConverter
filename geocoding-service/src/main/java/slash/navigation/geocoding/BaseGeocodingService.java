@@ -20,7 +20,6 @@
 
 package slash.navigation.geocoding;
 
-import slash.navigation.common.NavigationPosition;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -32,13 +31,17 @@ import java.util.List;
  */
 
 public abstract class BaseGeocodingService implements GeocodingService {
-    protected List<GeocodingResult> asGeocodingResults(List<NavigationPosition> positions) {
+    protected List<GeocodingResult> asGeocodingResults(List<CategorizedNavigationPosition> positions) {
+        return asGeocodingResults(positions, getName());
+    }
+
+    protected List<GeocodingResult> asGeocodingResults(List<CategorizedNavigationPosition> positions, String name) {
         if (positions == null)
             return null;
 
         List<GeocodingResult> results = new ArrayList<>(positions.size());
-        for (NavigationPosition position : positions) {
-            results.add(new GeocodingResult(position, getName()));
+        for (CategorizedNavigationPosition position : positions) {
+            results.add(new GeocodingResult(position, name));
         }
         return results;
     }

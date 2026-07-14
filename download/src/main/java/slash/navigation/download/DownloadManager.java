@@ -307,6 +307,10 @@ public class DownloadManager {
                 if (!validator.isChecksumsValid()) {
                     log.info("Found outdated download " + download);
 
+                    // drop the ETag so the re-download issues an unconditional GET:
+                    // a corrupt/outdated local file must be re-fetched, otherwise the
+                    // conditional request keeps returning 304 and the file is never replaced
+                    download.setETag(null);
                     download.setState(Outdated);
                     getModel().updateDownload(download);
 
@@ -371,7 +375,11 @@ public class DownloadManager {
     private static final Set<State> SUCCESSFUL = new HashSet<>(asList(NotModified, Succeeded));
 
     public void executeDownload(String description, String url, Action action, File file, Runnable invokeAfterSuccessfulDownloadRunnable) {
-        Download download = queueForDownload(description, url, action, new FileAndChecksum(file, null), null);
+        executeDownload(description, url, action, file, null, invokeAfterSuccessfulDownloadRunnable);
+    }
+
+    public void executeDownload(String description, String url, Action action, File file, List<FileAndChecksum> fragments, Runnable invokeAfterSuccessfulDownloadRunnable) {
+        Download download = queueForDownload(description, url, action, new FileAndChecksum(file, null), fragments);
         if(!file.exists()) {
             waitForCompletion(singletonList(download));
 

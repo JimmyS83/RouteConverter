@@ -25,10 +25,11 @@ import slash.common.helpers.APIKeyRegistry;
 import slash.navigation.common.LongitudeAndLatitude;
 import slash.navigation.common.MapDescriptor;
 import slash.navigation.common.NavigationPosition;
-import slash.navigation.common.SimpleNavigationPosition;
 import slash.navigation.geocoding.BaseGeocodingService;
+import slash.navigation.geocoding.CategorizedNavigationPosition;
 import slash.navigation.elevation.ElevationService;
 import slash.navigation.geocoding.GeocodingResult;
+import slash.navigation.geocoding.SimpleCategorizedNavigationPosition;
 import slash.navigation.googlemaps.elevation.ElevationResponse;
 import slash.navigation.googlemaps.geocode.GeocodeResponse;
 import slash.navigation.rest.Get;
@@ -46,7 +47,6 @@ import static slash.navigation.common.Bearing.calculateBearing;
 import static slash.navigation.googlemaps.GoogleMapsServer.getGoogleMapsServer;
 import static slash.navigation.googlemaps.GoogleUtil.unmarshalElevation;
 import static slash.navigation.googlemaps.GoogleUtil.unmarshalGeocode;
-import static slash.navigation.rest.HttpRequest.USER_AGENT;
 
 /**
  * Encapsulates REST access to the Google Elevation and Geocoding API Services.
@@ -82,9 +82,7 @@ public class GoogleService extends BaseGeocodingService implements ElevationServ
     }
 
     private Get get(String url) {
-        Get get = new Get(url);
-        get.setUserAgent(USER_AGENT);
-        return get;
+        return new Get(url);
     }
 
     private void checkForError(String url, String status) throws ServiceUnavailableException {
@@ -155,14 +153,19 @@ public class GoogleService extends BaseGeocodingService implements ElevationServ
         return null;
     }
 
-    private List<NavigationPosition> extractAdresses(List<GeocodeResponse.Result> responses) {
-        List<NavigationPosition> result = new ArrayList<>(responses.size());
+    private List<CategorizedNavigationPosition> extractAdresses(List<GeocodeResponse.Result> responses) {
+        List<CategorizedNavigationPosition> result = new ArrayList<>(responses.size());
         for (GeocodeResponse.Result response : responses) {
-            GeocodeResponse.Result.Geometry.Location location = response.getGeometry().getLocation();
-            result.add(new SimpleNavigationPosition(location.getLng().doubleValue(), location.getLat().doubleValue(),
-                    null, response.getFormattedAddress()));
+            result.add(extractAddress(response));
         }
         return result;
+    }
+
+    CategorizedNavigationPosition extractAddress(GeocodeResponse.Result response) {
+        GeocodeResponse.Result.Geometry.Location location = response.getGeometry().getLocation();
+        String type = response.getType().isEmpty() ? null : response.getType().get(0);
+        return new SimpleCategorizedNavigationPosition(location.getLng().doubleValue(), location.getLat().doubleValue(),
+                null, response.getFormattedAddress(), type);
     }
 
     public Double getElevationFor(double longitude, double latitude) throws IOException {

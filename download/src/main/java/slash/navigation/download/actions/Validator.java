@@ -104,37 +104,56 @@ public class Validator {
         if (file.getFile().isDirectory())
             return true;
 
-        Checksum expected = file.getExpectedChecksum();
-        if (expected == null)
+        List<Checksum> expectedChecksums = file.getExpectedChecksums();
+        if (expectedChecksums.isEmpty())
             return true;
 
         Checksum actual = file.getActualChecksum();
         if (actual == null)
             return false;
 
-        boolean localLaterThanRemote = file.getActualChecksum().laterThan(file.getExpectedChecksum());
-        if (localLaterThanRemote)
-            // 2 reasons:
-            // - this was the very first download after a file update and this process updated the checksum on the server
-            // - the checksum on the server was updated but in the download queue there is still the checksum from the first download
-            log.info(format("%s is locally later than remote", file.getFile()));
+        // A file is valid if it matches ANY known-good checksum. Upstreams that rebuild a file on a
+        // schedule (e.g. BRouter segment tiles) produce a new content hash per build, so the catalog
+        // may record several valid checksums for one URI; a download of any of those builds is correct
+        // and must not be re-fetched (see GitHub #155).
+        for (Checksum expected : expectedChecksums)
+            if (matches(expected, actual)) {
+                log.fine(format("%s has valid checksum", file.getFile()));
+                return true;
+            }
 
-        boolean lastModifiedEquals = expected.getLastModified() == null ||
-                expected.getLastModified().equals(actual.getLastModified());
-        if (!lastModifiedEquals)
-            log.warning(format("%s has last modified %s but expected %s", file.getFile(), actual.getLastModified(), expected.getLastModified()));
+        Checksum latest = Checksum.getLatestChecksum(expectedChecksums);
+        log.warning(format("%s has SHA-1 %s / %s bytes but matched none of %d known-good checksum(s) (latest expected SHA-1 %s / %s bytes)",
+                file.getFile(), actual.getSHA1(), actual.getContentLength(), expectedChecksums.size(),
+                latest != null ? latest.getSHA1() : null, latest != null ? latest.getContentLength() : null));
+        return false;
+    }
+
+    private boolean matches(Checksum expected, Checksum actual) {
+        if (expected == null)
+            return true;
+
         boolean contentLengthEquals = expected.getContentLength() == null ||
                 expected.getContentLength().equals(actual.getContentLength());
-        if (!contentLengthEquals)
-            log.warning(format("%s has %d bytes but expected %d", file.getFile(), actual.getContentLength(), expected.getContentLength()));
         boolean sha1Equals = expected.getSHA1() == null ||
                 expected.getSHA1().equals(actual.getSHA1());
-        if (!sha1Equals)
-            log.warning(format("%s has SHA-1 %s but expected %s", file.getFile(), actual.getSHA1(), expected.getSHA1()));
-        boolean valid = lastModifiedEquals && contentLengthEquals && sha1Equals || localLaterThanRemote;
-        if (valid)
-            log.fine(format("%s has valid checksum", file.getFile()));
-        return valid;
+
+        if (expected.getSHA1() != null)
+            // SHA-1 is authoritative: a matching content hash means the file is correct,
+            // independent of its last-modified time (the server may not even send one, so a
+            // re-downloaded good file routinely has a different mtime than the stored checksum).
+            // A mismatching SHA-1 means the file is definitively wrong (see specs/00054).
+            return sha1Equals && contentLengthEquals;
+
+        // no authoritative hash: fall back to size + last-modified, with the "locally later
+        // than remote" heuristic to avoid endless re-downloads when the local file is newer
+        // than the (possibly stale) queued checksum:
+        // - the very first download after a file update, once this process updated the server checksum
+        // - the server checksum was updated but the queue still holds the first download's value
+        boolean lastModifiedEquals = expected.getLastModified() == null ||
+                expected.getLastModified().equals(actual.getLastModified());
+        boolean localLaterThanRemote = actual.laterThan(expected);
+        return lastModifiedEquals && contentLengthEquals || localLaterThanRemote;
     }
 
     private void determineChecksumsValid() throws IOException {

@@ -21,9 +21,12 @@ package slash.navigation.download.tools;
 
 
 import org.apache.commons.cli.*;
+import org.apache.commons.cli.help.HelpFormatter;
 import slash.navigation.datasources.DataSource;
+import slash.navigation.datasources.DataSourceManager;
 import slash.navigation.datasources.File;
 import slash.navigation.datasources.Map;
+import slash.navigation.datasources.Source;
 import slash.navigation.datasources.Theme;
 import slash.navigation.datasources.binding.DatasourceType;
 import slash.navigation.datasources.binding.FileType;
@@ -33,6 +36,7 @@ import slash.navigation.datasources.helpers.DataSourcesUtil;
 import slash.navigation.download.tools.helpers.AnchorFilter;
 import slash.navigation.download.tools.helpers.AnchorParser;
 import slash.navigation.download.tools.helpers.DownloadableType;
+import slash.navigation.download.tools.helpers.GlobToRegex;
 import slash.navigation.rest.Delete;
 import slash.navigation.rest.Get;
 import slash.navigation.rest.Post;
@@ -138,12 +142,12 @@ public class ScanWebsite extends BaseDownloadTool {
     }
 
     private void scan() throws IOException, JAXBException {
-        List<String> collectedUris = collectUris();
-        log.info(format("Collected URIs: %s (%d elements)", collectedUris, collectedUris.size()));
-
         DataSource source = loadDataSource(getId());
         if (!getUrl().equals(source.getBaseUrl()) && !baseUrl.equals(source.getBaseUrl()))
             log.warning("Data source URL: " + source.getBaseUrl() + " doesn't match URL: " + getUrl());
+
+        List<String> collectedUris = collectUris();
+        log.info(format("Collected URIs: %s (%d elements)", collectedUris, collectedUris.size()));
 
         Set<String> files = collectURIs(source);
 
@@ -158,7 +162,8 @@ public class ScanWebsite extends BaseDownloadTool {
                 addUrisInChunks(source, addedUris);
             if (!removedUris.isEmpty())
                 removeUris(source, removedUris);
-        }
+        } else
+            log.warning("No data sources server password found");
 
         log.info(format("Added %d URIs, removed %d URIs out of %d URIs", addCount, removeCount, collectedUris.size()));
     }
@@ -243,26 +248,79 @@ public class ScanWebsite extends BaseDownloadTool {
 
     private void run(String[] args) throws Exception {
         CommandLine line = parseCommandLine(args);
-        String typeArgument = line.getOptionValue(TYPE_ARGUMENT);
         setId(line.getOptionValue(ID_ARGUMENT));
-        setUrl(line.getOptionValue(URL_ARGUMENT));
-        baseUrl = line.getOptionValue(BASE_URL_ARGUMENT);
-        if (baseUrl == null)
-            baseUrl = getUrl();
-        String levelArgument = line.getOptionValue(LEVEL_ARGUMENT);
-        if(levelArgument != null)
-            level = Integer.parseInt(levelArgument);
-        String[] extensionArguments = line.getOptionValues(EXTENSION_ARGUMENT);
-        extensions = extensionArguments != null ? new HashSet<>(asList(extensionArguments)) : null;
-        String[] includeArguments = line.getOptionValues(INCLUDE_ARGUMENT);
-        includes = includeArguments != null ? new HashSet<>(asList(includeArguments)) : null;
-        String[] excludeArguments = line.getOptionValues(EXCLUDE_ARGUMENT);
-        excludes = excludeArguments != null ? new HashSet<>(asList(excludeArguments)) : null;
-        type = typeArgument != null ? DownloadableType.fromValue(typeArgument) : File;
         setDataSourcesServer(line.getOptionValue(DATASOURCES_SERVER_ARGUMENT));
         setDataSourcesUserName(line.getOptionValue(DATASOURCES_USERNAME_ARGUMENT));
         setDataSourcesPassword(line.getOptionValue(DATASOURCES_PASSWORD_ARGUMENT));
+
+        configureFromSourceElement(line.getOptionValue(URL_ARGUMENT) == null);
+        applyCliOverrides(line);
+
+        if (getUrl() == null)
+            throw new IllegalArgumentException("No --url provided and datasource has no <source> nor baseUrl");
+        if (baseUrl == null)
+            baseUrl = getUrl();
+        if (type == null)
+            type = File;
+
         scan();
+    }
+
+    private void configureFromSourceElement(boolean required) throws IOException, JAXBException {
+        if (getId() == null)
+            return;
+        DataSource dataSource;
+        try {
+            dataSource = loadDataSource(getId());
+        } catch (IllegalArgumentException e) {
+            if (required)
+                throw e;
+            return;
+        }
+        Source source = dataSource.getSource();
+        if (source == null) {
+            if (required)
+                throw new IllegalArgumentException("Datasource " + getId() + " has no <source> element; supply --url or migrate it");
+            return;
+        }
+        String sourceUrl = source.getUrl() != null && !source.getUrl().isBlank() ? source.getUrl() : dataSource.getBaseUrl();
+        setUrl(sourceUrl);
+        baseUrl = dataSource.getBaseUrl() != null ? dataSource.getBaseUrl() : sourceUrl;
+        if (source.getLevel() != null)
+            level = source.getLevel();
+        extensions = null;
+        includes = globListToRegexSet(source.getIncludes());
+        excludes = globListToRegexSet(source.getExcludes());
+    }
+
+    private void applyCliOverrides(CommandLine line) {
+        if (line.getOptionValue(URL_ARGUMENT) != null)
+            setUrl(line.getOptionValue(URL_ARGUMENT));
+        if (line.getOptionValue(BASE_URL_ARGUMENT) != null)
+            baseUrl = line.getOptionValue(BASE_URL_ARGUMENT);
+        if (line.getOptionValue(LEVEL_ARGUMENT) != null)
+            level = Integer.parseInt(line.getOptionValue(LEVEL_ARGUMENT));
+        String[] extensionArguments = line.getOptionValues(EXTENSION_ARGUMENT);
+        if (extensionArguments != null)
+            extensions = new HashSet<>(asList(extensionArguments));
+        String[] includeArguments = line.getOptionValues(INCLUDE_ARGUMENT);
+        if (includeArguments != null)
+            includes = new HashSet<>(asList(includeArguments));
+        String[] excludeArguments = line.getOptionValues(EXCLUDE_ARGUMENT);
+        if (excludeArguments != null)
+            excludes = new HashSet<>(asList(excludeArguments));
+        String typeArgument = line.getOptionValue(TYPE_ARGUMENT);
+        if (typeArgument != null)
+            type = DownloadableType.fromValue(typeArgument);
+    }
+
+    private Set<String> globListToRegexSet(List<String> globs) {
+        if (globs == null || globs.isEmpty())
+            return null;
+        Set<String> result = new HashSet<>();
+        for (String glob : globs)
+            result.add(GlobToRegex.convert(glob));
+        return result;
     }
 
     @SuppressWarnings("AccessStaticViaInstance")
@@ -270,37 +328,43 @@ public class ScanWebsite extends BaseDownloadTool {
         CommandLineParser parser = new DefaultParser();
         Options options = new Options();
         options.addOption(Option.builder().argName(ID_ARGUMENT).hasArgs().required().longOpt(ID_ARGUMENT).
-                desc("ID of the data source").build());
-        options.addOption(Option.builder().argName(URL_ARGUMENT).numberOfArgs(1).required().longOpt(URL_ARGUMENT).
-                desc("URL to scan for resources").build());
+                desc("ID of the data source").get());
+        options.addOption(Option.builder().argName(URL_ARGUMENT).numberOfArgs(1).longOpt(URL_ARGUMENT).
+                desc("URL to scan for resources (overrides <source url> from datasource XML)").get());
         options.addOption(Option.builder().argName(BASE_URL_ARGUMENT).numberOfArgs(1).longOpt(BASE_URL_ARGUMENT).
-                desc("URL to use as a base for resources").build());
+                desc("URL to use as a base for resources").get());
         options.addOption(Option.builder().argName(LEVEL_ARGUMENT).numberOfArgs(1).longOpt(LEVEL_ARGUMENT).
-                desc("Maximum recursion depth").build());
+                desc("Maximum recursion depth").get());
         options.addOption(Option.builder().argName(EXTENSION_ARGUMENT).hasArgs().longOpt(EXTENSION_ARGUMENT).
-                desc("Extensions to scan for").build());
+                desc("Extensions to scan for").get());
         options.addOption(Option.builder().argName(INCLUDE_ARGUMENT).hasArgs().longOpt(INCLUDE_ARGUMENT).
-                desc("Regex for resources to include").build());
+                desc("Regex for resources to include").get());
         options.addOption(Option.builder().argName(EXCLUDE_ARGUMENT).hasArgs().longOpt(EXCLUDE_ARGUMENT).
-                desc("Regex for resources to exclude").build());
+                desc("Regex for resources to exclude").get());
         options.addOption(Option.builder().argName(TYPE_ARGUMENT).numberOfArgs(1).longOpt(TYPE_ARGUMENT).
-                desc("Type of the resources").build());
+                desc("Type of the resources").get());
         options.addOption(Option.builder().argName(DATASOURCES_SERVER_ARGUMENT).numberOfArgs(1).longOpt(DATASOURCES_SERVER_ARGUMENT).
-                desc("Data sources server").build());
+                desc("Data sources server").get());
         options.addOption(Option.builder().argName(DATASOURCES_USERNAME_ARGUMENT).numberOfArgs(1).longOpt(DATASOURCES_USERNAME_ARGUMENT).
-                desc("Data sources server user name").build());
+                desc("Data sources server user name").get());
         options.addOption(Option.builder().argName(DATASOURCES_PASSWORD_ARGUMENT).numberOfArgs(1).longOpt(DATASOURCES_PASSWORD_ARGUMENT).
-                desc("Data sources server password").build());
+                desc("Data sources server password").get());
         try {
             return parser.parse(options, args);
         } catch (ParseException e) {
-            HelpFormatter formatter = new HelpFormatter();
-            formatter.printHelp(getClass().getSimpleName(), options);
+            try {
+                HelpFormatter.builder().get().printHelp(getClass().getSimpleName(), null, options, null, false);
+            } catch (IOException ignored) {
+                // help output is best-effort
+            }
             throw e;
         }
     }
 
     public static void main(String[] args) throws Exception {
+        // Server backward-compat (RouteConverter 3.3): include <source> in fetched XML.
+        // See download-tools/SCAN_CLIENT.md → "Server backward-compat".
+        System.setProperty(DataSourceManager.INCLUDE_SOURCE_PROPERTY, "true");
         new ScanWebsite().run(args);
         exit(0);
     }

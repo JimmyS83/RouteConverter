@@ -5,9 +5,9 @@
     <name>TimeAlbum Pro for Linux</name>
     <parent>
         <groupId>slash.navigation</groupId>
-        <artifactId>route-converter-build</artifactId>
-        <version>3.4-SNAPSHOT</version>
-        <relativePath>../route-converter-build/pom.xml</relativePath>
+        <artifactId>RouteConverter</artifactId>
+        <version>3.5-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
     </parent>
 
     <build>
@@ -85,6 +85,12 @@
             <groupId>${project.groupId}</groupId>
             <artifactId>time-album-pro</artifactId>
             <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-to-slf4j</artifactId>
+            <version>2.24.3</version>
+            <scope>runtime</scope>
         </dependency>
     </dependencies>
 </project>
