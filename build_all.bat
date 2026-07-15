@@ -1,1 +1,2 @@
-mvnw clean package -Dmaven.test.skip=true
+mvnw clean package -DskipTests
+REM -Dmaven.test.skip=true
